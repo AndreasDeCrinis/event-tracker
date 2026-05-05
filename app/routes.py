@@ -42,6 +42,7 @@ from .models import (
 
 bp = Blueprint("main", __name__)
 GOOGLE_OAUTH_STATE_KEY = "google_calendar_oauth_state"
+GOOGLE_OAUTH_CODE_VERIFIER_KEY = "google_calendar_oauth_code_verifier"
 
 EVENT_STATUS_LABELS = {
     STATUS_PLANNED: "Geplant",
@@ -284,18 +285,20 @@ def connect_google_calendar():
     redirect_uri = google_redirect_uri()
 
     try:
-        authorization_url, returned_state = build_authorization_url(state=state, redirect_uri=redirect_uri)
+        authorization_url, returned_state, code_verifier = build_authorization_url(state=state, redirect_uri=redirect_uri)
     except GoogleCalendarError as error:
         flash(str(error), "error")
         return _redirect("google-calendar")
 
     session[GOOGLE_OAUTH_STATE_KEY] = returned_state
+    session[GOOGLE_OAUTH_CODE_VERIFIER_KEY] = code_verifier
     return redirect(authorization_url)
 
 
 @bp.get("/google-calendar/oauth2callback")
 def google_calendar_callback():
     expected_state = session.pop(GOOGLE_OAUTH_STATE_KEY, None)
+    code_verifier = session.pop(GOOGLE_OAUTH_CODE_VERIFIER_KEY, None)
 
     if request.args.get("error"):
         flash(f"Google Kalender wurde nicht verbunden: {request.args['error']}", "error")
@@ -305,6 +308,10 @@ def google_calendar_callback():
         flash("Google Kalender konnte wegen eines ungültigen OAuth-Status nicht verbunden werden.", "error")
         return _redirect("google-calendar")
 
+    if not code_verifier:
+        flash("Google Kalender konnte wegen eines fehlenden OAuth-Code-Verifiers nicht verbunden werden.", "error")
+        return _redirect("google-calendar")
+
     connection = _get_or_create_google_calendar_connection()
 
     try:
@@ -312,6 +319,7 @@ def google_calendar_callback():
             authorization_response=request.url,
             state=expected_state,
             redirect_uri=google_redirect_uri(),
+            code_verifier=code_verifier,
             existing_credentials_json=connection.credentials_json,
         )
     except GoogleCalendarError as error:

@@ -3,6 +3,7 @@ from datetime import date, datetime, time, timedelta
 import pytest
 
 from app import create_app, db
+from app import routes as routes_module
 from app.models import (
     BOOKING_FIXED,
     BOOKING_PLANNING,
@@ -470,6 +471,49 @@ def test_google_calendar_calendar_id_can_be_saved(app):
     with app.app_context():
         connection = db.session.get(GoogleCalendarConnection, 1)
         assert connection.calendar_id == "events@example.com"
+
+
+def test_google_calendar_connect_stores_oauth_state_and_code_verifier(app, monkeypatch):
+    def fake_authorization_url(state, redirect_uri):
+        return "https://accounts.google.com/o/oauth2/auth", state, "test-code-verifier"
+
+    monkeypatch.setattr(routes_module, "build_authorization_url", fake_authorization_url)
+
+    client = app.test_client()
+    response = client.post(
+        "/google-calendar/connect",
+        data={"calendar_id": "primary"},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "https://accounts.google.com/o/oauth2/auth"
+    with client.session_transaction() as session:
+        assert session[routes_module.GOOGLE_OAUTH_STATE_KEY]
+        assert session[routes_module.GOOGLE_OAUTH_CODE_VERIFIER_KEY] == "test-code-verifier"
+
+
+def test_google_calendar_callback_passes_stored_code_verifier(app, monkeypatch):
+    captured = {}
+
+    def fake_exchange_authorization_response(**kwargs):
+        captured.update(kwargs)
+        return "{}"
+
+    monkeypatch.setattr(routes_module, "exchange_authorization_response", fake_exchange_authorization_response)
+    monkeypatch.setattr(routes_module, "_sync_all_google_events", lambda connection: None)
+
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session[routes_module.GOOGLE_OAUTH_STATE_KEY] = "test-state"
+        session[routes_module.GOOGLE_OAUTH_CODE_VERIFIER_KEY] = "test-code-verifier"
+
+    response = client.get("/google-calendar/oauth2callback?state=test-state&code=test-code")
+
+    assert response.status_code == 302
+    assert captured["state"] == "test-state"
+    assert captured["code_verifier"] == "test-code-verifier"
+    with app.app_context():
+        assert db.session.get(GoogleCalendarConnection, 1).credentials_json == "{}"
 
 
 def test_google_calendar_event_body_uses_event_date_range_and_assignments(app):

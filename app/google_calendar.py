@@ -51,11 +51,17 @@ def build_authorization_url(state, redirect_uri):
         include_granted_scopes="true",
         prompt="consent",
     )
-    return authorization_url, returned_state
+    return authorization_url, returned_state, flow.code_verifier
 
 
-def exchange_authorization_response(authorization_response, state, redirect_uri, existing_credentials_json=None):
-    flow = _google_flow(state=state, redirect_uri=redirect_uri)
+def exchange_authorization_response(
+    authorization_response,
+    state,
+    redirect_uri,
+    code_verifier,
+    existing_credentials_json=None,
+):
+    flow = _google_flow(state=state, redirect_uri=redirect_uri, code_verifier=code_verifier)
     try:
         flow.fetch_token(authorization_response=authorization_response)
     except Exception as error:
@@ -205,7 +211,7 @@ def _calendar_service(connection):
     return build("calendar", "v3", credentials=credentials, cache_discovery=False)
 
 
-def _google_flow(state, redirect_uri):
+def _google_flow(state, redirect_uri, code_verifier=None):
     if not google_oauth_is_configured():
         raise GoogleCalendarError("GOOGLE_CLIENT_ID und GOOGLE_CLIENT_SECRET müssen gesetzt sein.")
 
@@ -219,6 +225,7 @@ def _google_flow(state, redirect_uri):
         scopes=GOOGLE_CALENDAR_SCOPES,
         state=state,
         redirect_uri=redirect_uri,
+        code_verifier=code_verifier,
     )
 
 
