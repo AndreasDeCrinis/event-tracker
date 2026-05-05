@@ -91,19 +91,61 @@ h4 {
   text-transform: uppercase;
 }
 
-.topnav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.menu-shell {
+  position: relative;
 }
 
-.topnav a {
-  color: var(--text);
+.menu-button {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 42px;
+  height: 42px;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 8px 12px;
-  text-decoration: none;
+  border-radius: 8px;
   background: #fff;
+  padding: 0 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.menu-button::-webkit-details-marker {
+  display: none;
+}
+
+.menu-button span {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--text);
+}
+
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 190px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  z-index: 20;
+}
+
+.menu-panel a {
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.menu-panel a:hover {
+  background: var(--panel-soft);
+  color: var(--teal-dark);
 }
 
 main {
@@ -185,6 +227,12 @@ main {
   align-items: start;
 }
 
+.settings-layout {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+}
+
 .primary-flow,
 .secondary-flow {
   display: grid;
@@ -214,6 +262,10 @@ main {
 .tool-panel,
 .empty-panel {
   padding: 18px;
+}
+
+.settings-panel {
+  max-width: 640px;
 }
 
 .event-form {
@@ -684,7 +736,10 @@ th {
   .topbar {
     position: static;
     align-items: flex-start;
-    flex-direction: column;
+  }
+
+  .menu-shell {
+    margin-left: auto;
   }
 
   .stats-grid,

@@ -99,7 +99,7 @@ Optional override if your public URL differs from the generated reverse-proxy UR
 GOOGLE_REDIRECT_URI: https://foo.decrinis.com/google-calendar/oauth2callback
 ```
 
-In the app, open `Kalender`, enter the calendar ID, then click `Google Kalender verbinden`.
+In the app, open the burger menu, choose `Einstellungen`, enter the calendar ID, then click `Google Kalender verbinden`.
 The calendar ID can be `primary` or the ID shown in Google Calendar settings under "Integrate calendar".
 
 The app requests the narrow Calendar events scope:

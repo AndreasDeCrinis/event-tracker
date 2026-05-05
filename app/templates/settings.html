@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="settings-layout" aria-label="Einstellungen">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Konfiguration</p>
+        <h2>Einstellungen</h2>
+      </div>
+    </div>
+
+    {% include "_google_calendar_settings.html" %}
+  </section>
+{% endblock %}

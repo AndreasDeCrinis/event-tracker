@@ -144,9 +144,14 @@ def index():
         booking_planning=BOOKING_PLANNING,
         booking_fixed=BOOKING_FIXED,
         planned_status=STATUS_PLANNED,
-        google_calendar_connection=_google_calendar_connection(),
-        google_calendar_oauth_configured=google_oauth_is_configured(),
-        google_calendar_redirect_uri=google_redirect_uri(),
+    )
+
+
+@bp.get("/settings")
+def settings():
+    return render_template(
+        "settings.html",
+        **_google_calendar_template_context(),
     )
 
 
@@ -256,7 +261,7 @@ def update_google_calendar_settings():
     calendar_id = _required_text("calendar_id", "Google Kalender-ID")
 
     if not calendar_id:
-        return _redirect("google-calendar")
+        return _settings_redirect("google-calendar")
 
     connection = _get_or_create_google_calendar_connection()
     _set_google_calendar_id(connection, calendar_id)
@@ -267,7 +272,7 @@ def update_google_calendar_settings():
     else:
         flash("Google Kalender-ID wurde gespeichert. Verbinde Google Kalender, um Events zu synchronisieren.", "success")
 
-    return _redirect("google-calendar")
+    return _settings_redirect("google-calendar")
 
 
 @bp.post("/google-calendar/connect")
@@ -275,7 +280,7 @@ def connect_google_calendar():
     calendar_id = _required_text("calendar_id", "Google Kalender-ID")
 
     if not calendar_id:
-        return _redirect("google-calendar")
+        return _settings_redirect("google-calendar")
 
     connection = _get_or_create_google_calendar_connection()
     _set_google_calendar_id(connection, calendar_id)
@@ -288,7 +293,7 @@ def connect_google_calendar():
         authorization_url, returned_state, code_verifier = build_authorization_url(state=state, redirect_uri=redirect_uri)
     except GoogleCalendarError as error:
         flash(str(error), "error")
-        return _redirect("google-calendar")
+        return _settings_redirect("google-calendar")
 
     session[GOOGLE_OAUTH_STATE_KEY] = returned_state
     session[GOOGLE_OAUTH_CODE_VERIFIER_KEY] = code_verifier
@@ -302,15 +307,15 @@ def google_calendar_callback():
 
     if request.args.get("error"):
         flash(f"Google Kalender wurde nicht verbunden: {request.args['error']}", "error")
-        return _redirect("google-calendar")
+        return _settings_redirect("google-calendar")
 
     if not expected_state or request.args.get("state") != expected_state:
         flash("Google Kalender konnte wegen eines ungültigen OAuth-Status nicht verbunden werden.", "error")
-        return _redirect("google-calendar")
+        return _settings_redirect("google-calendar")
 
     if not code_verifier:
         flash("Google Kalender konnte wegen eines fehlenden OAuth-Code-Verifiers nicht verbunden werden.", "error")
-        return _redirect("google-calendar")
+        return _settings_redirect("google-calendar")
 
     connection = _get_or_create_google_calendar_connection()
 
@@ -324,7 +329,7 @@ def google_calendar_callback():
         )
     except GoogleCalendarError as error:
         flash(str(error), "error")
-        return _redirect("google-calendar")
+        return _settings_redirect("google-calendar")
 
     connection.connected_at = _utc_now()
     connection.updated_at = _utc_now()
@@ -332,14 +337,14 @@ def google_calendar_callback():
     db.session.commit()
 
     _sync_all_google_events(connection)
-    return _redirect("google-calendar")
+    return _settings_redirect("google-calendar")
 
 
 @bp.post("/google-calendar/sync")
 def sync_google_calendar():
     connection = _google_calendar_connection()
     _sync_all_google_events(connection)
-    return _redirect("google-calendar")
+    return _settings_redirect("google-calendar")
 
 
 @bp.post("/google-calendar/disconnect")
@@ -348,7 +353,7 @@ def disconnect_google_calendar():
 
     if not connection:
         flash("Google Kalender ist nicht verbunden.", "error")
-        return _redirect("google-calendar")
+        return _settings_redirect("google-calendar")
 
     connection.credentials_json = None
     connection.connected_at = None
@@ -356,7 +361,7 @@ def disconnect_google_calendar():
     connection.last_error = None
     db.session.commit()
     flash("Google Kalender wurde getrennt. Bestehende Kalendereinträge bleiben erhalten.", "success")
-    return _redirect("google-calendar")
+    return _settings_redirect("google-calendar")
 
 
 @bp.post("/materials")
@@ -582,6 +587,10 @@ def _redirect(anchor):
     return redirect(url_for("main.index") + f"#{anchor}")
 
 
+def _settings_redirect(anchor):
+    return redirect(url_for("main.settings") + f"#{anchor}")
+
+
 def _event_is_archived(event, today_start):
     return event.status in (STATUS_COMPLETED, STATUS_CANCELLED) or (
         event.status == STATUS_PLANNED and event.ends_at <= today_start
@@ -590,6 +599,14 @@ def _event_is_archived(event, today_start):
 
 def _event_is_open_for_assignment(event):
     return event.status == STATUS_PLANNED and not _event_is_archived(event, _today_start())
+
+
+def _google_calendar_template_context():
+    return {
+        "google_calendar_connection": _google_calendar_connection(),
+        "google_calendar_oauth_configured": google_oauth_is_configured(),
+        "google_calendar_redirect_uri": google_redirect_uri(),
+    }
 
 
 def _google_calendar_connection():

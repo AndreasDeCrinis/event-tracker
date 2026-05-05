@@ -271,66 +271,6 @@
     </section>
 
     <aside class="secondary-flow">
-      <section id="google-calendar" class="tool-panel">
-        <div class="section-heading compact">
-          <div>
-            <p class="eyebrow">Sync</p>
-            <h2>Google Kalender</h2>
-          </div>
-        </div>
-
-        {% set calendar_connected = google_calendar_connection and google_calendar_connection.is_connected %}
-        <form method="post" action="{{ url_for('main.update_google_calendar_settings') }}" class="stacked-form">
-          <label>
-            <span>Kalender-ID</span>
-            <input
-              name="calendar_id"
-              value="{{ google_calendar_connection.calendar_id if google_calendar_connection else '' }}"
-              placeholder="primary oder kalender-id@group.calendar.google.com"
-              required
-            >
-          </label>
-          <div class="button-row">
-            <button
-              class="primary-button"
-              type="submit"
-              formaction="{{ url_for('main.connect_google_calendar') }}"
-              {% if not google_calendar_oauth_configured %}disabled{% endif %}
-            >
-              {{ "Google Kalender neu verbinden" if calendar_connected else "Google Kalender verbinden" }}
-            </button>
-            <button class="ghost-button" type="submit">Kalender-ID übernehmen</button>
-          </div>
-        </form>
-
-        <div class="integration-status">
-          <span class="availability {% if not calendar_connected %}empty{% endif %}">
-            {{ "Verbunden" if calendar_connected else "Nicht verbunden" }}
-          </span>
-          {% if google_calendar_connection and google_calendar_connection.last_synced_at %}
-            <span>Letzter Sync: {{ google_calendar_connection.last_synced_at | date_only }}</span>
-          {% endif %}
-        </div>
-
-        {% if not google_calendar_oauth_configured %}
-          <p class="helper-text">OAuth ist noch nicht konfiguriert. Setze GOOGLE_CLIENT_ID und GOOGLE_CLIENT_SECRET.</p>
-        {% endif %}
-        {% if google_calendar_connection and google_calendar_connection.last_error %}
-          <p class="helper-text error-text">{{ google_calendar_connection.last_error }}</p>
-        {% endif %}
-
-        {% if calendar_connected %}
-          <div class="button-row split-actions">
-            <form method="post" action="{{ url_for('main.sync_google_calendar') }}">
-              <button class="ghost-button" type="submit">Jetzt synchronisieren</button>
-            </form>
-            <form method="post" action="{{ url_for('main.disconnect_google_calendar') }}">
-              <button class="danger-button" type="submit">Trennen</button>
-            </form>
-          </div>
-        {% endif %}
-      </section>
-
       <section id="inventory" class="tool-panel">
         <div class="section-heading compact">
           <div>

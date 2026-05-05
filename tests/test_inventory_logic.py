@@ -453,12 +453,22 @@ def test_planning_event_material_assignment_quantity_can_exceed_inventory(app):
         assert material_shortage_quantity(material, event) == 3
 
 
-def test_google_calendar_section_renders_connect_button(app):
+def test_burger_menu_links_to_settings(app):
     html = app.test_client().get("/").data.decode()
 
-    assert "Google Kalender verbinden" in html
-    assert "Kalender-ID" in html
-    assert "/google-calendar/connect" in html
+    assert 'class="menu-button"' in html
+    assert 'href="/settings"' in html
+    assert "Einstellungen" in html
+
+
+def test_google_calendar_section_renders_on_settings_page(app):
+    dashboard_html = app.test_client().get("/").data.decode()
+    settings_html = app.test_client().get("/settings").data.decode()
+
+    assert "Google Kalender verbinden" not in dashboard_html
+    assert "Google Kalender verbinden" in settings_html
+    assert "Kalender-ID" in settings_html
+    assert "/google-calendar/connect" in settings_html
 
 
 def test_google_calendar_calendar_id_can_be_saved(app):

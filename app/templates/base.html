@@ -12,13 +12,20 @@
         <p class="eyebrow">Lokale Planung</p>
         <h1>Event-Job-Planer</h1>
       </div>
-      <nav class="topnav" aria-label="Bereiche">
-        <a href="#events">Events</a>
-        <a href="#archive">Job-Archiv</a>
-        <a href="#google-calendar">Kalender</a>
-        <a href="#inventory">Inventar</a>
-        <a href="#personnel">Personal</a>
-      </nav>
+      <details class="menu-shell">
+        <summary class="menu-button" aria-label="Menü öffnen">
+          <span></span>
+          <span></span>
+          <span></span>
+        </summary>
+        <nav class="menu-panel" aria-label="Bereiche">
+          <a href="{{ url_for('main.index') }}#events">Events</a>
+          <a href="{{ url_for('main.index') }}#archive">Job-Archiv</a>
+          <a href="{{ url_for('main.index') }}#inventory">Inventar</a>
+          <a href="{{ url_for('main.index') }}#personnel">Personal</a>
+          <a href="{{ url_for('main.settings') }}">Einstellungen</a>
+        </nav>
+      </details>
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
