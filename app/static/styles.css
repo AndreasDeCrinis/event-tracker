@@ -564,6 +564,46 @@ th {
   font-size: 1.15rem;
 }
 
+.compact-icon-button,
+.inline-form .compact-icon-button,
+.quantity-form .compact-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+}
+
+.compact-icon-button:hover,
+.inline-form .compact-icon-button:hover,
+.quantity-form .compact-icon-button:hover {
+  border-color: var(--teal);
+  color: var(--teal-dark);
+  background: #fff;
+}
+
+.compact-icon-button.remove-button:hover {
+  border-color: rgba(180, 35, 24, 0.45);
+  color: var(--red);
+}
+
+.button-icon {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
 .person-list {
   display: grid;
   gap: 8px;

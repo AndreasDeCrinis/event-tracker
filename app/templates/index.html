@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 
 {% block content %}
+  {% macro action_icon(name) %}
+    {% if name == "save" %}
+      <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+        <path d="M20 6 9 17l-5-5"></path>
+      </svg>
+    {% elif name == "remove" %}
+      <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+        <path d="M18 6 6 18"></path>
+        <path d="m6 6 12 12"></path>
+      </svg>
+    {% endif %}
+  {% endmacro %}
+
   <section class="stats-grid" aria-label="Überblick">
     <div class="stat-panel accent-teal">
       <span>Aktive Events</span>
@@ -50,7 +63,9 @@
                   </option>
                 {% endfor %}
               </select>
-              <button type="submit">Speichern</button>
+              <button class="compact-icon-button save-button" type="submit" aria-label="Planungsstatus speichern" title="Speichern">
+                {{ action_icon("save") }}
+              </button>
             </form>
           {% endif %}
           {% if event.status == planned_status %}
@@ -98,10 +113,14 @@
                       <label class="sr-only" for="material-quantity-{{ assignment.id }}">Menge</label>
                       <input id="material-quantity-{{ assignment.id }}" type="number" name="quantity" min="1" step="1" value="{{ assignment.quantity }}" required>
                       <span>{{ assignment.material.unit }}</span>
-                      <button type="submit">Speichern</button>
+                      <button class="compact-icon-button save-button" type="submit" aria-label="Menge für {{ assignment.material.name }} speichern" title="Speichern">
+                        {{ action_icon("save") }}
+                      </button>
                     </form>
                     <form method="post" action="{{ url_for('main.remove_material_assignment', assignment_id=assignment.id) }}">
-                      <button class="ghost-button" type="submit" aria-label="{{ assignment.material.name }} entfernen">Entfernen</button>
+                      <button class="compact-icon-button remove-button" type="submit" aria-label="{{ assignment.material.name }} entfernen" title="Entfernen">
+                        {{ action_icon("remove") }}
+                      </button>
                     </form>
                   {% else %}
                     <strong>{{ assignment.quantity }} {{ assignment.material.unit }}</strong>
@@ -143,7 +162,9 @@
                   <strong>{{ assignment.personnel.role }}</strong>
                   {% if can_assign %}
                     <form method="post" action="{{ url_for('main.remove_personnel_assignment', assignment_id=assignment.id) }}">
-                      <button class="ghost-button" type="submit" aria-label="{{ assignment.personnel.name }} entfernen">Entfernen</button>
+                      <button class="compact-icon-button remove-button" type="submit" aria-label="{{ assignment.personnel.name }} entfernen" title="Entfernen">
+                        {{ action_icon("remove") }}
+                      </button>
                     </form>
                   {% endif %}
                 </li>
@@ -306,7 +327,9 @@
                       <label class="sr-only" for="material-total-{{ row.item.id }}">Gesamtmenge</label>
                       <input id="material-total-{{ row.item.id }}" type="number" name="total_quantity" min="0" step="1" value="{{ row.item.total_quantity }}" required>
                       <span>{{ row.item.unit }}</span>
-                      <button type="submit">Speichern</button>
+                      <button class="compact-icon-button save-button" type="submit" aria-label="Gesamtmenge für {{ row.item.name }} speichern" title="Speichern">
+                        {{ action_icon("save") }}
+                      </button>
                     </form>
                   </td>
                   <td>{{ row.allocated }}</td>
