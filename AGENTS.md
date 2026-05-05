@@ -57,7 +57,7 @@ Do not mix `localhost` and `127.0.0.1` during Google OAuth. The session cookie a
 - Planned events may over-assign material and show warnings.
 - Fixed events actually book material and enforce availability.
 - Fixed material returns after the event window or closure.
-- Consumable material remains deducted after successful completion.
+- Consumable material is reserved while a fixed event is planned. On successful completion, assigned consumable quantities are subtracted from the material's total quantity.
 - Cancelled events release reservations.
 - Personnel are busy only during planned overlapping events.
 - Completed, cancelled, and past planned jobs appear in the archive.

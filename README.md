@@ -113,6 +113,6 @@ https://www.googleapis.com/auth/calendar.events
 - Events can be `In Planung` or `Fixiert`.
 - `In Planung` events can list more material than is currently available. They do not reserve or consume inventory, and the UI warns when planned material may be insufficient.
 - `Fixiert` events actually book material. Fixed materials, such as flamethrowers, are reserved only for fixed planned events that overlap the same date range.
-- Consumables, such as flamethrower fuel, are deducted for fixed planned events and remain deducted after a fixed event is completed.
+- Consumables, such as flamethrower fuel, are reserved for fixed planned events. When an event is successfully completed, the assigned consumable quantities are subtracted from the material's total quantity.
 - Cancelled events release both fixed material reservations and consumable reservations.
 - Personnel are unavailable only during planned events that overlap their assigned event time. After the event window, they are free again.

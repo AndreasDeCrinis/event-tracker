@@ -49,7 +49,7 @@ tests/
 - `In Planung` does not reserve inventory and can exceed availability.
 - `Fixiert` books inventory and must not exceed availability.
 - Fixed material is only reserved for overlapping active planned fixed events.
-- Consumables count for fixed planned and fixed completed events; they remain deducted after completion.
+- Consumables count as reserved while fixed events are planned. On successful completion, assigned consumable quantities are subtracted from the material's total quantity.
 - Cancelled events release fixed and consumable reservations.
 - Personnel conflicts are based on overlapping planned events.
 

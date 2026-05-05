@@ -120,6 +120,12 @@ def _migrate_database():
         if column_name not in event_columns:
             db.session.execute(text(f"ALTER TABLE event ADD COLUMN {column_name} {column_type}"))
             db.session.commit()
+            event_columns[column_name] = {"name": column_name}
+
+    if "consumables_deducted_at" not in event_columns:
+        db.session.execute(text("ALTER TABLE event ADD COLUMN consumables_deducted_at DATETIME"))
+        db.session.commit()
+        event_columns["consumables_deducted_at"] = {"name": "consumables_deducted_at"}
 
     db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_event_google_event_id ON event (google_event_id)"))
     db.session.commit()
@@ -188,3 +194,4 @@ def _rebuild_event_table(event_columns):
         connection.commit()
     finally:
         connection.close()
+

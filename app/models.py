@@ -33,6 +33,7 @@ class Event(db.Model):
     google_event_link = db.Column(db.String(500), nullable=True)
     google_synced_at = db.Column(db.DateTime, nullable=True)
     google_sync_error = db.Column(db.Text, nullable=True)
+    consumables_deducted_at = db.Column(db.DateTime, nullable=True)
 
     material_assignments = db.relationship(
         "EventMaterial",
@@ -156,8 +157,6 @@ class EventPersonnel(db.Model):
 
 
 def material_counted_statuses(kind):
-    if kind == MATERIAL_CONSUMABLE:
-        return (STATUS_PLANNED, STATUS_COMPLETED)
     return (STATUS_PLANNED,)
 
 
@@ -224,7 +223,9 @@ def _assignment_counts_for_material(material, event, target_event=None, moment=N
         return False
 
     if material.kind == MATERIAL_CONSUMABLE:
-        return event.status in material_counted_statuses(material.kind)
+        return event.status in material_counted_statuses(material.kind) or (
+            event.status == STATUS_COMPLETED and event.consumables_deducted_at is None
+        )
 
     if event.status != STATUS_PLANNED:
         return False

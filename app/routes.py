@@ -239,6 +239,13 @@ def close_event(event_id):
         flash("Bitte einen gültigen Abschlussstatus wählen.", "error")
         return _redirect("event-" + str(event.id))
 
+    if event.status != STATUS_PLANNED:
+        flash("Abgeschlossene oder abgesagte Events können nicht erneut abgeschlossen werden.", "error")
+        return _redirect("event-" + str(event.id))
+
+    if status == STATUS_COMPLETED and not _deduct_consumables_for_completed_event(event):
+        return _redirect("event-" + str(event.id))
+
     event.status = status
     db.session.commit()
     _sync_event_if_google_connected(event)
@@ -599,6 +606,44 @@ def _event_is_archived(event, today_start):
 
 def _event_is_open_for_assignment(event):
     return event.status == STATUS_PLANNED and not _event_is_archived(event, _today_start())
+
+
+def _deduct_consumables_for_completed_event(event):
+    if event.consumables_deducted_at:
+        return True
+
+    deductions = [
+        assignment
+        for assignment in event.material_assignments
+        if assignment.material.kind == MATERIAL_CONSUMABLE
+    ]
+
+    shortages = []
+    for assignment in deductions:
+        available = material_available_quantity(
+            assignment.material,
+            target_event=event,
+            exclude_event_id=event.id,
+        )
+        if assignment.quantity > available:
+            shortages.append(
+                f"{assignment.material.name}: {assignment.quantity - available} {assignment.material.unit}"
+            )
+
+    if shortages:
+        flash(
+            "Event kann nicht abgeschlossen werden. Verbrauchsmaterial fehlt: "
+            + ", ".join(shortages)
+            + ".",
+            "error",
+        )
+        return False
+
+    for assignment in deductions:
+        assignment.material.total_quantity -= assignment.quantity
+
+    event.consumables_deducted_at = _utc_now()
+    return True
 
 
 def _google_calendar_template_context():

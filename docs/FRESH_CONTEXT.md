@@ -13,6 +13,7 @@ The app tracks event jobs and resources:
 - Inventory availability.
 - Job archive for old, completed, or cancelled events.
 - Google Calendar sync to a user-specified calendar.
+- Successful event closure reduces the total quantity of assigned consumable materials.
 
 ## Local State And Secrets
 
@@ -139,7 +140,7 @@ docker compose run --rm web pytest
 Current expected result:
 
 ```text
-27 passed
+31 passed
 ```
 
 Known warnings:

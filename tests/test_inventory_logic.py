@@ -19,6 +19,7 @@ from app.models import (
     Material,
     Personnel,
     material_assignable_quantity,
+    material_allocated_quantity,
     material_available_quantity,
     material_shortage_quantity,
     personnel_has_conflict,
@@ -106,21 +107,114 @@ def test_fixed_material_returns_after_completion(app):
         assert material_available_quantity(item, moment=datetime(2026, 6, 4)) == 6
 
 
-def test_consumable_material_stays_deducted_after_completion(app):
+def test_consumable_material_reduces_total_quantity_after_successful_completion(app):
     with app.app_context():
-        fuel = Material(name="Flamethrower fuel", kind=MATERIAL_CONSUMABLE, total_quantity=20, unit="L")
+        fuel = Material(name="Flamethrower fuel", kind=MATERIAL_CONSUMABLE, total_quantity=100, unit="bottles")
         event = make_event("Night show", date(2026, 6, 5), date(2026, 6, 5), location="Arena")
         db.session.add_all([fuel, event])
         db.session.flush()
-        db.session.add(EventMaterial(event=event, material=fuel, quantity=7))
+        db.session.add(EventMaterial(event=event, material=fuel, quantity=20))
         db.session.commit()
+        event_id = event.id
+        fuel_id = fuel.id
 
-        assert material_available_quantity(fuel) == 13
+        assert material_available_quantity(fuel) == 80
 
+    response = app.test_client().post(f"/events/{event_id}/close", data={"status": STATUS_COMPLETED})
+
+    assert response.status_code == 302
+    with app.app_context():
+        fuel = db.session.get(Material, fuel_id)
+        event = db.session.get(Event, event_id)
+        assert fuel.total_quantity == 80
+        assert event.consumables_deducted_at is not None
+        assert material_allocated_quantity(fuel) == 0
+        assert material_available_quantity(fuel) == 80
+
+
+def test_legacy_completed_consumable_without_deduction_marker_stays_allocated(app):
+    with app.app_context():
+        fuel = Material(name="Legacy completed fuel", kind=MATERIAL_CONSUMABLE, total_quantity=100, unit="bottles")
+        event = make_event("Legacy completed event", date(2026, 6, 6), date(2026, 6, 6))
         event.status = STATUS_COMPLETED
+        db.session.add_all([fuel, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=fuel, quantity=20))
         db.session.commit()
 
-        assert material_available_quantity(fuel) == 13
+        assert event.consumables_deducted_at is None
+        assert fuel.total_quantity == 100
+        assert material_allocated_quantity(fuel) == 20
+        assert material_available_quantity(fuel) == 80
+
+
+def test_consumable_material_is_not_reduced_when_event_is_cancelled(app):
+    with app.app_context():
+        fuel = Material(name="Cancelled fuel", kind=MATERIAL_CONSUMABLE, total_quantity=100, unit="bottles")
+        event = make_event("Cancelled fuel event", date(2026, 6, 6), date(2026, 6, 6))
+        db.session.add_all([fuel, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=fuel, quantity=20))
+        db.session.commit()
+        event_id = event.id
+        fuel_id = fuel.id
+
+    response = app.test_client().post(f"/events/{event_id}/close", data={"status": STATUS_CANCELLED})
+
+    assert response.status_code == 302
+    with app.app_context():
+        fuel = db.session.get(Material, fuel_id)
+        event = db.session.get(Event, event_id)
+        assert fuel.total_quantity == 100
+        assert event.consumables_deducted_at is None
+        assert material_available_quantity(fuel) == 100
+
+
+def test_consumable_material_cannot_be_deducted_twice(app):
+    with app.app_context():
+        fuel = Material(name="Idempotent fuel", kind=MATERIAL_CONSUMABLE, total_quantity=100, unit="bottles")
+        event = make_event("Idempotent fuel event", date(2026, 6, 7), date(2026, 6, 7))
+        db.session.add_all([fuel, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=fuel, quantity=20))
+        db.session.commit()
+        event_id = event.id
+        fuel_id = fuel.id
+
+    client = app.test_client()
+    client.post(f"/events/{event_id}/close", data={"status": STATUS_COMPLETED})
+    response = client.post(f"/events/{event_id}/close", data={"status": STATUS_COMPLETED})
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Material, fuel_id).total_quantity == 80
+
+
+def test_consumable_completion_rejects_when_available_total_is_insufficient(app):
+    with app.app_context():
+        fuel = Material(name="Overused fuel", kind=MATERIAL_CONSUMABLE, total_quantity=10, unit="bottles")
+        event = make_event(
+            "Overused planning event",
+            date(2026, 6, 8),
+            date(2026, 6, 8),
+            booking_status=BOOKING_PLANNING,
+        )
+        db.session.add_all([fuel, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=fuel, quantity=20))
+        db.session.commit()
+        event_id = event.id
+        fuel_id = fuel.id
+
+    response = app.test_client().post(f"/events/{event_id}/close", data={"status": STATUS_COMPLETED})
+
+    assert response.status_code == 302
+    with app.app_context():
+        fuel = db.session.get(Material, fuel_id)
+        event = db.session.get(Event, event_id)
+        assert fuel.total_quantity == 10
+        assert event.status == STATUS_PLANNED
+        assert event.consumables_deducted_at is None
 
 
 def test_personnel_is_available_after_completed_event(app):
