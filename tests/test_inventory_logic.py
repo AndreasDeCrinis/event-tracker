@@ -4,6 +4,8 @@ import pytest
 
 from app import create_app, db
 from app.models import (
+    BOOKING_FIXED,
+    BOOKING_PLANNING,
     MATERIAL_CONSUMABLE,
     MATERIAL_FIXED,
     STATUS_CANCELLED,
@@ -16,17 +18,19 @@ from app.models import (
     Personnel,
     material_assignable_quantity,
     material_available_quantity,
+    material_shortage_quantity,
     personnel_has_conflict,
     personnel_is_available,
 )
 
 
-def make_event(name, starts_on, ends_on, location="Hall"):
+def make_event(name, starts_on, ends_on, location="Hall", booking_status=BOOKING_FIXED):
     return Event(
         name=name,
         starts_at=datetime.combine(starts_on, time.min),
         ends_at=datetime.combine(ends_on + timedelta(days=1), time.min),
         location=location,
+        booking_status=booking_status,
     )
 
 
@@ -229,3 +233,104 @@ def test_past_planned_event_rejects_new_material_assignment(app):
     assert response.status_code == 302
     with app.app_context():
         assert EventMaterial.query.filter_by(event_id=event_id, material_id=material_id).count() == 0
+
+
+def test_planning_event_material_can_exceed_inventory_without_booking(app):
+    with app.app_context():
+        material = Material(name="Planning flamethrowers", kind=MATERIAL_FIXED, total_quantity=2, unit="pcs")
+        event = make_event(
+            "Planning event",
+            date(2999, 2, 1),
+            date(2999, 2, 1),
+            booking_status=BOOKING_PLANNING,
+        )
+        db.session.add_all([material, event])
+        db.session.commit()
+        event_id = event.id
+        material_id = material.id
+
+    response = app.test_client().post(
+        f"/events/{event_id}/materials",
+        data={"material_id": material_id, "quantity": 5},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        material = db.session.get(Material, material_id)
+        event = db.session.get(Event, event_id)
+        assert material_available_quantity(material, target_event=event) == 2
+        assert material_shortage_quantity(material, event) == 3
+
+
+def test_planning_event_with_shortage_renders_material_warning(app):
+    with app.app_context():
+        material = Material(name="Warning fuel rigs", kind=MATERIAL_FIXED, total_quantity=1, unit="pcs")
+        event = make_event(
+            "Warning event",
+            date(2999, 3, 1),
+            date(2999, 3, 1),
+            booking_status=BOOKING_PLANNING,
+        )
+        db.session.add_all([material, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=material, quantity=3))
+        db.session.commit()
+
+    html = app.test_client().get("/").data.decode()
+
+    assert "Material eventuell nicht ausreichend verfügbar" in html
+    assert "Warning fuel rigs" in html
+
+
+def test_planning_event_with_shortage_cannot_be_fixed(app):
+    with app.app_context():
+        material = Material(name="Short booking item", kind=MATERIAL_FIXED, total_quantity=1, unit="pcs")
+        event = make_event(
+            "Short booking",
+            date(2999, 4, 1),
+            date(2999, 4, 1),
+            booking_status=BOOKING_PLANNING,
+        )
+        db.session.add_all([material, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=material, quantity=3))
+        db.session.commit()
+        event_id = event.id
+
+    response = app.test_client().post(
+        f"/events/{event_id}/booking-status",
+        data={"booking_status": BOOKING_FIXED},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Event, event_id).booking_status == BOOKING_PLANNING
+
+
+def test_planning_event_without_shortage_can_be_fixed_and_books_inventory(app):
+    with app.app_context():
+        material = Material(name="Available booking item", kind=MATERIAL_FIXED, total_quantity=4, unit="pcs")
+        event = make_event(
+            "Available booking",
+            date(2999, 5, 1),
+            date(2999, 5, 1),
+            booking_status=BOOKING_PLANNING,
+        )
+        db.session.add_all([material, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=material, quantity=3))
+        db.session.commit()
+        event_id = event.id
+        material_id = material.id
+
+    response = app.test_client().post(
+        f"/events/{event_id}/booking-status",
+        data={"booking_status": BOOKING_FIXED},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = db.session.get(Event, event_id)
+        material = db.session.get(Material, material_id)
+        assert event.booking_status == BOOKING_FIXED
+        assert material_available_quantity(material, target_event=event) == 1

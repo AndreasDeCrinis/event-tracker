@@ -4,6 +4,9 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from . import db
 from .models import (
+    BOOKING_FIXED,
+    BOOKING_PLANNING,
+    EVENT_BOOKING_STATUSES,
     MATERIAL_CONSUMABLE,
     MATERIAL_FIXED,
     MATERIAL_KINDS,
@@ -18,6 +21,7 @@ from .models import (
     material_assignable_quantity,
     material_allocated_quantity,
     material_available_quantity,
+    material_shortage_quantity,
     personnel_has_conflict,
     personnel_is_available,
     personnel_planned_assignment_count,
@@ -33,6 +37,11 @@ EVENT_STATUS_LABELS = {
 }
 
 EVENT_CLOSURE_STATUSES = (STATUS_COMPLETED, STATUS_CANCELLED)
+
+EVENT_BOOKING_STATUS_LABELS = {
+    BOOKING_PLANNING: "In Planung",
+    BOOKING_FIXED: "Fixiert",
+}
 
 MATERIAL_KIND_LABELS = {
     MATERIAL_FIXED: "Festes Material",
@@ -86,6 +95,11 @@ def index():
         ]
         for event in events
     }
+    event_material_warnings = {
+        event.id: _material_shortage_warnings(event)
+        for event in events
+        if event.booking_status == BOOKING_PLANNING
+    }
 
     stats = {
         "events": len(events),
@@ -103,6 +117,7 @@ def index():
         personnel_rows=personnel_rows,
         event_material_options=event_material_options,
         event_personnel_options=event_personnel_options,
+        event_material_warnings=event_material_warnings,
         stats=stats,
         material_kinds=MATERIAL_KINDS,
         material_kind_labels=MATERIAL_KIND_LABELS,
@@ -110,6 +125,10 @@ def index():
         material_consumable=MATERIAL_CONSUMABLE,
         event_status_labels=EVENT_STATUS_LABELS,
         event_closure_statuses=EVENT_CLOSURE_STATUSES,
+        event_booking_statuses=EVENT_BOOKING_STATUSES,
+        event_booking_status_labels=EVENT_BOOKING_STATUS_LABELS,
+        booking_planning=BOOKING_PLANNING,
+        booking_fixed=BOOKING_FIXED,
         planned_status=STATUS_PLANNED,
     )
 
@@ -120,8 +139,13 @@ def create_event():
     starts_on_value = _required_text("starts_on", "Beginn")
     ends_on_value = _required_text("ends_on", "Ende")
     location = _required_text("location", "Ort")
+    booking_status = request.form.get("booking_status", BOOKING_PLANNING)
 
     if not all((name, starts_on_value, ends_on_value, location)):
+        return _redirect("events")
+
+    if booking_status not in EVENT_BOOKING_STATUSES:
+        flash("Bitte In Planung oder Fixiert wählen.", "error")
         return _redirect("events")
 
     try:
@@ -140,12 +164,46 @@ def create_event():
         starts_at=datetime.combine(starts_on, time.min),
         ends_at=datetime.combine(ends_on + timedelta(days=1), time.min),
         location=location,
+        booking_status=booking_status,
         notes=_optional_text("notes"),
     )
     db.session.add(event)
     db.session.commit()
     flash(f"{event.name} wurde hinzugefügt.", "success")
     return _redirect("events")
+
+
+@bp.post("/events/<int:event_id>/booking-status")
+def set_event_booking_status(event_id):
+    event = Event.query.get_or_404(event_id)
+    booking_status = request.form.get("booking_status")
+
+    if booking_status not in EVENT_BOOKING_STATUSES:
+        flash("Bitte In Planung oder Fixiert wählen.", "error")
+        return _redirect("event-" + str(event.id))
+
+    if event.status != STATUS_PLANNED:
+        flash("Nur geplante Events können zwischen In Planung und Fixiert wechseln.", "error")
+        return _redirect("event-" + str(event.id))
+
+    if _event_is_archived(event, _today_start()):
+        flash("Archivierte Events können nicht mehr fixiert werden.", "error")
+        return _redirect("event-" + str(event.id))
+
+    if booking_status == BOOKING_FIXED:
+        warnings = _material_shortage_warnings(event)
+        if warnings:
+            shortage_text = ", ".join(
+                f"{warning['material'].name}: {warning['shortage']} {warning['material'].unit}"
+                for warning in warnings
+            )
+            flash(f"Event kann nicht fixiert werden. Material fehlt: {shortage_text}.", "error")
+            return _redirect("event-" + str(event.id))
+
+    event.booking_status = booking_status
+    db.session.commit()
+    flash(f"{event.name} ist jetzt {EVENT_BOOKING_STATUS_LABELS[event.booking_status]}.", "success")
+    return _redirect("event-" + str(event.id))
 
 
 @bp.post("/events/<int:event_id>/close")
@@ -253,10 +311,11 @@ def assign_material(event_id):
         flash("Material kann nur aktiven geplanten Events zugewiesen werden.", "error")
         return _redirect("event-" + str(event.id))
 
-    assignable = material_assignable_quantity(material, event)
-    if quantity > assignable:
-        flash(f"Von {material.name} sind für dieses Event nur noch {assignable} {material.unit} zuweisbar.", "error")
-        return _redirect("event-" + str(event.id))
+    if event.booking_status == BOOKING_FIXED:
+        assignable = material_assignable_quantity(material, event)
+        if quantity > assignable:
+            flash(f"Von {material.name} sind für dieses Event nur noch {assignable} {material.unit} zuweisbar.", "error")
+            return _redirect("event-" + str(event.id))
 
     assignment = EventMaterial.query.filter_by(event_id=event.id, material_id=material.id).first()
     if assignment:
@@ -351,6 +410,26 @@ def _event_is_open_for_assignment(event):
 
 def _today_start():
     return datetime.combine(datetime.now().date(), time.min)
+
+
+def _material_shortage_warnings(event):
+    warnings = []
+    for assignment in event.material_assignments:
+        shortage = material_shortage_quantity(assignment.material, event)
+        if shortage > 0:
+            warnings.append(
+                {
+                    "material": assignment.material,
+                    "assigned": assignment.quantity,
+                    "available": material_available_quantity(
+                        assignment.material,
+                        target_event=event,
+                        exclude_event_id=event.id,
+                    ),
+                    "shortage": shortage,
+                }
+            )
+    return warnings
 
 
 def _required_text(field, label):

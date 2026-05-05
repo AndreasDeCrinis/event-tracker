@@ -91,6 +91,14 @@ def _migrate_database():
 
     if "duration_hours" in event_columns:
         _rebuild_event_table_without_duration(event_columns)
+        inspector = inspect(db.engine)
+        event_columns = {column["name"] for column in inspector.get_columns("event")}
+
+    if "booking_status" not in event_columns:
+        db.session.execute(
+            text("ALTER TABLE event ADD COLUMN booking_status VARCHAR(20) NOT NULL DEFAULT 'fixed'")
+        )
+        db.session.commit()
 
 
 def _rebuild_event_table_without_duration(event_columns):
@@ -116,10 +124,12 @@ def _rebuild_event_table_without_duration(event_columns):
                         ends_at DATETIME NOT NULL,
                         location VARCHAR(160) NOT NULL,
                         status VARCHAR(20) NOT NULL,
+                        booking_status VARCHAR(20) NOT NULL DEFAULT 'fixed',
                         notes TEXT,
                         PRIMARY KEY (id),
                         CONSTRAINT event_date_range_positive CHECK (ends_at > starts_at),
-                        CONSTRAINT event_status_valid CHECK (status in ('planned', 'completed', 'cancelled'))
+                        CONSTRAINT event_status_valid CHECK (status in ('planned', 'completed', 'cancelled')),
+                        CONSTRAINT event_booking_status_valid CHECK (booking_status in ('planning', 'fixed'))
                     )
                     """
                 )
@@ -127,8 +137,8 @@ def _rebuild_event_table_without_duration(event_columns):
             connection.execute(
                 text(
                     f"""
-                    INSERT INTO event_new (id, name, starts_at, ends_at, location, status, notes)
-                    SELECT id, name, starts_at, {ends_at_expression}, location, status, notes
+                    INSERT INTO event_new (id, name, starts_at, ends_at, location, status, booking_status, notes)
+                    SELECT id, name, starts_at, {ends_at_expression}, location, status, 'fixed', notes
                     FROM event
                     """
                 )
@@ -138,6 +148,7 @@ def _rebuild_event_table_without_duration(event_columns):
             connection.execute(text("CREATE INDEX ix_event_starts_at ON event (starts_at)"))
             connection.execute(text("CREATE INDEX ix_event_ends_at ON event (ends_at)"))
             connection.execute(text("CREATE INDEX ix_event_status ON event (status)"))
+            connection.execute(text("CREATE INDEX ix_event_booking_status ON event (booking_status)"))
 
         connection.exec_driver_sql("PRAGMA foreign_keys=ON")
         connection.exec_driver_sql("PRAGMA legacy_alter_table=OFF")

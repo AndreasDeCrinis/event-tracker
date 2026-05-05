@@ -300,6 +300,16 @@ select:focus {
   border-left-color: var(--red);
 }
 
+.event-card .booking-planning {
+  background: rgba(183, 121, 31, 0.12);
+  color: #7a4b12;
+}
+
+.event-card .booking-fixed {
+  background: rgba(109, 91, 208, 0.12);
+  color: var(--violet);
+}
+
 .archived-card {
   background: #fdfdfb;
 }
@@ -308,6 +318,7 @@ select:focus {
 .title-row,
 .meta-row,
 .inline-form,
+.event-actions,
 .assign-form,
 .panel-heading {
   display: flex;
@@ -365,6 +376,12 @@ select:focus {
   gap: 8px;
 }
 
+.event-actions {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .inline-form select {
   min-width: 128px;
 }
@@ -372,6 +389,21 @@ select:focus {
 .notes {
   margin-top: 12px;
   color: var(--muted);
+}
+
+.warning-panel {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  border: 1px solid rgba(183, 121, 31, 0.35);
+  border-radius: 8px;
+  background: rgba(183, 121, 31, 0.08);
+  color: #7a4b12;
+  padding: 10px 12px;
+}
+
+.warning-panel span {
+  font-size: 0.86rem;
 }
 
 .assignment-grid {

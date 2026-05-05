@@ -14,6 +14,10 @@ STATUS_COMPLETED = "completed"
 STATUS_CANCELLED = "cancelled"
 EVENT_STATUSES = (STATUS_PLANNED, STATUS_COMPLETED, STATUS_CANCELLED)
 
+BOOKING_PLANNING = "planning"
+BOOKING_FIXED = "fixed"
+EVENT_BOOKING_STATUSES = (BOOKING_PLANNING, BOOKING_FIXED)
+
 
 class Event(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -22,6 +26,7 @@ class Event(db.Model):
     ends_at = db.Column(db.DateTime, nullable=False, index=True)
     location = db.Column(db.String(160), nullable=False)
     status = db.Column(db.String(20), nullable=False, default=STATUS_PLANNED, index=True)
+    booking_status = db.Column(db.String(20), nullable=False, default=BOOKING_PLANNING, index=True)
     notes = db.Column(db.Text, nullable=True)
 
     material_assignments = db.relationship(
@@ -40,6 +45,7 @@ class Event(db.Model):
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="event_date_range_positive"),
         CheckConstraint(f"status in {EVENT_STATUSES}", name="event_status_valid"),
+        CheckConstraint(f"booking_status in {EVENT_BOOKING_STATUSES}", name="event_booking_status_valid"),
     )
 
     @property
@@ -169,6 +175,14 @@ def material_assignable_quantity(material, event):
     return max(available_for_event - assigned_to_event, 0)
 
 
+def material_shortage_quantity(material, event):
+    assigned_to_event = sum(
+        assignment.quantity for assignment in event.material_assignments if assignment.material_id == material.id
+    )
+    available_for_event = material_available_quantity(material, target_event=event, exclude_event_id=event.id)
+    return max(assigned_to_event - available_for_event, 0)
+
+
 def personnel_planned_assignment_count(personnel, moment=None):
     return sum(1 for assignment in personnel.assignments if assignment.event.is_active_at(moment))
 
@@ -187,6 +201,9 @@ def personnel_has_conflict(personnel, event):
 
 
 def _assignment_counts_for_material(material, event, target_event=None, moment=None):
+    if event.booking_status != BOOKING_FIXED:
+        return False
+
     if material.kind == MATERIAL_CONSUMABLE:
         return event.status in material_counted_statuses(material.kind)
 

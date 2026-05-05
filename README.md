@@ -20,14 +20,25 @@ docker compose run --rm web pytest
 
 ## Publish Docker Image
 
-The GitHub Actions workflow publishes `adecrinis/event-job-tracker` to Docker Hub when you push a semantic version tag:
+The GitHub Actions workflow publishes `adecrinis/event-job-tracker` to Docker Hub from pushes to `main`.
+
+It creates the next semantic version tag from Conventional Commit messages since the previous `vMAJOR.MINOR.PATCH` tag:
 
 ```bash
-git tag v1.2.3
-git push origin v1.2.3
+git commit -m "fix: correct inventory count"
+git push origin main
 ```
 
+Release rules:
+
+- `fix:` and `perf:` create a patch release, such as `v1.2.3` to `v1.2.4`.
+- `feat:` creates a minor release, such as `v1.2.3` to `v1.3.0`.
+- `feat!:` or a `BREAKING CHANGE:` footer creates a major release, such as `v1.2.3` to `v2.0.0`.
+- Commits without a release-worthy Conventional Commit prefix do not create a Docker release.
+
 It pushes `1.2.3`, `1.2`, `1`, and `latest`.
+
+Manually pushed semantic version tags like `v1.2.3` are also supported.
 
 Required GitHub repository secrets:
 
@@ -61,7 +72,9 @@ For direct local HTTP access without a proxy, set `TRUSTED_PROXY_COUNT=0` and `S
 
 ## Inventory Logic
 
-- Fixed materials, such as flamethrowers, are reserved only for planned events that overlap the same time window. Once the event window is over, they are free again.
-- Consumables, such as flamethrower fuel, are deducted for planned events and remain deducted after an event is completed.
+- Events can be `In Planung` or `Fixiert`.
+- `In Planung` events can list more material than is currently available. They do not reserve or consume inventory, and the UI warns when planned material may be insufficient.
+- `Fixiert` events actually book material. Fixed materials, such as flamethrowers, are reserved only for fixed planned events that overlap the same date range.
+- Consumables, such as flamethrower fuel, are deducted for fixed planned events and remain deducted after a fixed event is completed.
 - Cancelled events release both fixed material reservations and consumable reservations.
 - Personnel are unavailable only during planned events that overlap their assigned event time. After the event window, they are free again.

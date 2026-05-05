@@ -22,33 +22,63 @@
 
   {% macro event_card(event, archived=false) %}
     {% set can_assign = event.status == planned_status and not archived %}
+    {% set is_fixed = event.booking_status == booking_fixed %}
+    {% set material_warnings = event_material_warnings.get(event.id, []) %}
     <article id="event-{{ event.id }}" class="event-card status-{{ event.status }} {% if archived %}archived-card{% endif %}">
       <div class="event-card-header">
         <div>
           <div class="title-row">
             <h3>{{ event.name }}</h3>
             <span class="status-pill">{{ event_status_labels[event.status] }}</span>
+            <span class="status-pill booking-{{ event.booking_status }}">{{ event_booking_status_labels[event.booking_status] }}</span>
           </div>
           <div class="meta-row">
             <span>{{ event.starts_on | date_only }} bis {{ event.ends_on | date_only }}</span>
             <span>{{ event.location }}</span>
           </div>
         </div>
-        {% if event.status == planned_status %}
-          <form class="inline-form" method="post" action="{{ url_for('main.close_event', event_id=event.id) }}">
-            <label class="sr-only" for="closure-status-{{ event.id }}">Abschluss</label>
-            <select id="closure-status-{{ event.id }}" name="status">
-              {% for status in event_closure_statuses %}
-                <option value="{{ status }}">{{ event_status_labels[status] }}</option>
-              {% endfor %}
-            </select>
-            <button type="submit">Event abschließen</button>
-          </form>
-        {% endif %}
+        <div class="event-actions">
+          {% if event.status == planned_status and not archived %}
+            <form class="inline-form" method="post" action="{{ url_for('main.set_event_booking_status', event_id=event.id) }}">
+              <label class="sr-only" for="booking-status-{{ event.id }}">Planungsstatus</label>
+              <select id="booking-status-{{ event.id }}" name="booking_status">
+                {% for status in event_booking_statuses %}
+                  <option value="{{ status }}" {% if event.booking_status == status %}selected{% endif %}>
+                    {{ event_booking_status_labels[status] }}
+                  </option>
+                {% endfor %}
+              </select>
+              <button type="submit">Speichern</button>
+            </form>
+          {% endif %}
+          {% if event.status == planned_status %}
+            <form class="inline-form" method="post" action="{{ url_for('main.close_event', event_id=event.id) }}">
+              <label class="sr-only" for="closure-status-{{ event.id }}">Abschluss</label>
+              <select id="closure-status-{{ event.id }}" name="status">
+                {% for status in event_closure_statuses %}
+                  <option value="{{ status }}">{{ event_status_labels[status] }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit">Event abschließen</button>
+            </form>
+          {% endif %}
+        </div>
       </div>
 
       {% if event.notes %}
         <p class="notes">{{ event.notes }}</p>
+      {% endif %}
+
+      {% if material_warnings %}
+        <div class="warning-panel">
+          <strong>Material eventuell nicht ausreichend verfügbar.</strong>
+          {% for warning in material_warnings %}
+            <span>
+              {{ warning.material.name }}: {{ warning.assigned }} {{ warning.material.unit }} geplant,
+              {{ warning.available }} {{ warning.material.unit }} verfügbar.
+            </span>
+          {% endfor %}
+        </div>
       {% endif %}
 
       <div class="assignment-grid">
@@ -80,8 +110,8 @@
               <select id="material-{{ event.id }}" name="material_id" required>
                 <option value="">Material</option>
                 {% for row in event_material_options[event.id] %}
-                  <option value="{{ row.item.id }}" {% if row.available == 0 %}disabled{% endif %}>
-                    {{ row.item.name }} · {{ row.available }} {{ row.item.unit }} zuweisbar
+                  <option value="{{ row.item.id }}" {% if is_fixed and row.available == 0 %}disabled{% endif %}>
+                    {{ row.item.name }} · {{ row.available }} {{ row.item.unit }} verfügbar
                   </option>
                 {% endfor %}
               </select>
@@ -163,6 +193,13 @@
           <label>
             <span>Ort</span>
             <input name="location" placeholder="Halle 3" required>
+          </label>
+          <label>
+            <span>Planungsstatus</span>
+            <select name="booking_status" required>
+              <option value="{{ booking_planning }}">{{ event_booking_status_labels[booking_planning] }}</option>
+              <option value="{{ booking_fixed }}">{{ event_booking_status_labels[booking_fixed] }}</option>
+            </select>
           </label>
           <label class="span-2">
             <span>Notizen</span>
