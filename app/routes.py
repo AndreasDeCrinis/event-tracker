@@ -1,0 +1,385 @@
+from datetime import datetime
+
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+
+from . import db
+from .models import (
+    EVENT_STATUSES,
+    MATERIAL_CONSUMABLE,
+    MATERIAL_FIXED,
+    MATERIAL_KINDS,
+    STATUS_CANCELLED,
+    STATUS_COMPLETED,
+    STATUS_PLANNED,
+    Event,
+    EventMaterial,
+    EventPersonnel,
+    Material,
+    Personnel,
+    material_assignable_quantity,
+    material_allocated_quantity,
+    material_available_quantity,
+    personnel_has_conflict,
+    personnel_is_available,
+    personnel_planned_assignment_count,
+)
+
+
+bp = Blueprint("main", __name__)
+
+EVENT_STATUS_LABELS = {
+    STATUS_PLANNED: "Geplant",
+    STATUS_COMPLETED: "Abgeschlossen",
+    STATUS_CANCELLED: "Abgesagt",
+}
+
+MATERIAL_KIND_LABELS = {
+    MATERIAL_FIXED: "Festes Material",
+    MATERIAL_CONSUMABLE: "Verbrauchsmaterial",
+}
+
+
+@bp.get("/")
+def index():
+    moment = datetime.now()
+    events = Event.query.order_by(Event.starts_at.asc(), Event.name.asc()).all()
+    materials = Material.query.order_by(Material.name.asc()).all()
+    people = Personnel.query.order_by(Personnel.name.asc()).all()
+
+    material_rows = [
+        {
+            "item": material,
+            "allocated": material_allocated_quantity(material, moment=moment),
+            "available": material_available_quantity(material, moment=moment),
+        }
+        for material in materials
+    ]
+    personnel_rows = [
+        {
+            "person": person,
+            "planned_assignments": personnel_planned_assignment_count(person, moment=moment),
+            "available": personnel_is_available(person, moment=moment),
+        }
+        for person in people
+    ]
+    event_material_options = {
+        event.id: [
+            {
+                "item": material,
+                "available": material_assignable_quantity(material, event),
+            }
+            for material in materials
+        ]
+        for event in events
+    }
+    event_personnel_options = {
+        event.id: [
+            {
+                "person": person,
+                "conflict": personnel_has_conflict(person, event),
+            }
+            for person in people
+        ]
+        for event in events
+    }
+
+    stats = {
+        "events": len(events),
+        "planned_events": sum(1 for event in events if event.status == STATUS_PLANNED),
+        "materials": len(materials),
+        "people": len(people),
+        "alerts": sum(1 for row in material_rows if row["available"] == 0 and row["item"].total_quantity > 0),
+    }
+
+    return render_template(
+        "index.html",
+        events=events,
+        material_rows=material_rows,
+        personnel_rows=personnel_rows,
+        event_material_options=event_material_options,
+        event_personnel_options=event_personnel_options,
+        stats=stats,
+        material_kinds=MATERIAL_KINDS,
+        material_kind_labels=MATERIAL_KIND_LABELS,
+        material_fixed=MATERIAL_FIXED,
+        material_consumable=MATERIAL_CONSUMABLE,
+        event_statuses=EVENT_STATUSES,
+        event_status_labels=EVENT_STATUS_LABELS,
+        planned_status=STATUS_PLANNED,
+    )
+
+
+@bp.post("/events")
+def create_event():
+    name = _required_text("name", "Event-Name")
+    starts_at_value = _required_text("starts_at", "Beginn")
+    ends_at_value = _required_text("ends_at", "Ende")
+    location = _required_text("location", "Ort")
+
+    if not all((name, starts_at_value, ends_at_value, location)):
+        return _redirect("events")
+
+    try:
+        starts_at = _parse_datetime_local(starts_at_value)
+        ends_at = _parse_datetime_local(ends_at_value)
+    except ValueError:
+        flash("Bitte einen gültigen Beginn und ein gültiges Ende verwenden.", "error")
+        return _redirect("events")
+
+    if ends_at <= starts_at:
+        flash("Das Ende muss nach dem Beginn liegen.", "error")
+        return _redirect("events")
+
+    event = Event(
+        name=name,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        location=location,
+        notes=_optional_text("notes"),
+    )
+    db.session.add(event)
+    db.session.commit()
+    flash(f"{event.name} wurde hinzugefügt.", "success")
+    return _redirect("events")
+
+
+@bp.post("/events/<int:event_id>/status")
+def set_event_status(event_id):
+    event = Event.query.get_or_404(event_id)
+    status = request.form.get("status")
+
+    if status not in EVENT_STATUSES:
+        flash("Bitte einen gültigen Event-Status wählen.", "error")
+        return _redirect("event-" + str(event.id))
+
+    event.status = status
+    db.session.commit()
+    flash(f"{event.name} ist jetzt {EVENT_STATUS_LABELS[event.status].lower()}.", "success")
+    return _redirect("event-" + str(event.id))
+
+
+@bp.post("/events/<int:event_id>/delete")
+def delete_event(event_id):
+    event = Event.query.get_or_404(event_id)
+    db.session.delete(event)
+    db.session.commit()
+    flash(f"{event.name} wurde entfernt.", "success")
+    return _redirect("events")
+
+
+@bp.post("/materials")
+def create_material():
+    name = _required_text("name", "Materialname")
+    kind = request.form.get("kind", MATERIAL_FIXED)
+    quantity = _non_negative_int("total_quantity", "Gesamtmenge")
+    unit = _required_text("unit", "Einheit")
+
+    if kind not in MATERIAL_KINDS:
+        flash("Bitte festes Material oder Verbrauchsmaterial wählen.", "error")
+        return _redirect("inventory")
+
+    if not all((name, unit)) or quantity is None:
+        return _redirect("inventory")
+
+    material = Material(name=name, kind=kind, total_quantity=quantity, unit=unit, notes=_optional_text("notes"))
+    db.session.add(material)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash("Dieses Material existiert bereits.", "error")
+        return _redirect("inventory")
+
+    flash(f"{material.name} wurde zum Inventar hinzugefügt.", "success")
+    return _redirect("inventory")
+
+
+@bp.post("/materials/<int:material_id>/delete")
+def delete_material(material_id):
+    material = Material.query.get_or_404(material_id)
+    db.session.delete(material)
+    db.session.commit()
+    flash(f"{material.name} wurde aus dem Inventar entfernt.", "success")
+    return _redirect("inventory")
+
+
+@bp.post("/personnel")
+def create_personnel():
+    name = _required_text("name", "Name")
+    role = _required_text("role", "Rolle")
+
+    if not all((name, role)):
+        return _redirect("personnel")
+
+    person = Personnel(name=name, role=role, contact=_optional_text("contact"), notes=_optional_text("notes"))
+    db.session.add(person)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash("Diese Person existiert bereits.", "error")
+        return _redirect("personnel")
+
+    flash(f"{person.name} wurde zum Personal hinzugefügt.", "success")
+    return _redirect("personnel")
+
+
+@bp.post("/personnel/<int:personnel_id>/delete")
+def delete_personnel(personnel_id):
+    person = Personnel.query.get_or_404(personnel_id)
+    db.session.delete(person)
+    db.session.commit()
+    flash(f"{person.name} wurde entfernt.", "success")
+    return _redirect("personnel")
+
+
+@bp.post("/events/<int:event_id>/materials")
+def assign_material(event_id):
+    event = Event.query.get_or_404(event_id)
+    material = Material.query.get_or_404(request.form.get("material_id", type=int))
+    quantity = _positive_int("quantity", "Menge")
+
+    if quantity is None:
+        return _redirect("event-" + str(event.id))
+
+    if event.status != STATUS_PLANNED:
+        flash("Material kann nur geplanten Events zugewiesen werden.", "error")
+        return _redirect("event-" + str(event.id))
+
+    assignable = material_assignable_quantity(material, event)
+    if quantity > assignable:
+        flash(f"Von {material.name} sind für dieses Event nur noch {assignable} {material.unit} zuweisbar.", "error")
+        return _redirect("event-" + str(event.id))
+
+    assignment = EventMaterial.query.filter_by(event_id=event.id, material_id=material.id).first()
+    if assignment:
+        assignment.quantity += quantity
+    else:
+        assignment = EventMaterial(event=event, material=material, quantity=quantity)
+        db.session.add(assignment)
+
+    db.session.commit()
+    flash(f"{quantity} {material.unit} {material.name} wurden {event.name} zugewiesen.", "success")
+    return _redirect("event-" + str(event.id))
+
+
+@bp.post("/assignments/material/<int:assignment_id>/delete")
+def remove_material_assignment(assignment_id):
+    assignment = EventMaterial.query.get_or_404(assignment_id)
+    event_id = assignment.event_id
+    material_name = assignment.material.name
+    db.session.delete(assignment)
+    db.session.commit()
+    flash(f"Zuweisung von {material_name} wurde entfernt.", "success")
+    return _redirect("event-" + str(event_id))
+
+
+@bp.post("/events/<int:event_id>/personnel")
+def assign_personnel(event_id):
+    event = Event.query.get_or_404(event_id)
+    person = Personnel.query.get_or_404(request.form.get("personnel_id", type=int))
+
+    if event.status != STATUS_PLANNED:
+        flash("Personal kann nur geplanten Events zugewiesen werden.", "error")
+        return _redirect("event-" + str(event.id))
+
+    existing = EventPersonnel.query.filter_by(event_id=event.id, personnel_id=person.id).first()
+    if existing:
+        flash(f"{person.name} ist {event.name} bereits zugewiesen.", "error")
+        return _redirect("event-" + str(event.id))
+
+    if personnel_has_conflict(person, event):
+        flash(f"{person.name} ist in diesem Zeitraum bereits einem anderen Event zugewiesen.", "error")
+        return _redirect("event-" + str(event.id))
+
+    db.session.add(EventPersonnel(event=event, personnel=person))
+    db.session.commit()
+    flash(f"{person.name} wurde {event.name} zugewiesen.", "success")
+    return _redirect("event-" + str(event.id))
+
+
+@bp.post("/assignments/personnel/<int:assignment_id>/delete")
+def remove_personnel_assignment(assignment_id):
+    assignment = EventPersonnel.query.get_or_404(assignment_id)
+    event_id = assignment.event_id
+    person_name = assignment.personnel.name
+    db.session.delete(assignment)
+    db.session.commit()
+    flash(f"Zuweisung von {person_name} wurde entfernt.", "success")
+    return _redirect("event-" + str(event_id))
+
+
+@bp.app_template_filter("date_time")
+def date_time(value):
+    return value.strftime("%d.%m.%Y %H:%M")
+
+
+@bp.app_template_filter("date_only")
+def date_only(value):
+    return value.strftime("%Y-%m-%d")
+
+
+@bp.app_template_filter("time_only")
+def time_only(value):
+    return value.strftime("%H:%M")
+
+
+def _parse_datetime_local(value):
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M")
+
+
+def _redirect(anchor):
+    return redirect(url_for("main.index") + f"#{anchor}")
+
+
+def _required_text(field, label):
+    value = (request.form.get(field) or "").strip()
+    if not value:
+        flash(f"{label} ist erforderlich.", "error")
+        return None
+    return value
+
+
+def _optional_text(field):
+    return (request.form.get(field) or "").strip() or None
+
+
+def _positive_float(field, label):
+    try:
+        value = float(request.form.get(field, ""))
+    except ValueError:
+        flash(f"{label} muss eine Zahl sein.", "error")
+        return None
+
+    if value <= 0:
+        flash(f"{label} muss größer als null sein.", "error")
+        return None
+    return value
+
+
+def _positive_int(field, label):
+    try:
+        value = int(request.form.get(field, ""))
+    except ValueError:
+        flash(f"{label} muss eine ganze Zahl sein.", "error")
+        return None
+
+    if value <= 0:
+        flash(f"{label} muss größer als null sein.", "error")
+        return None
+    return value
+
+
+def _non_negative_int(field, label):
+    try:
+        value = int(request.form.get(field, ""))
+    except ValueError:
+        flash(f"{label} muss eine ganze Zahl sein.", "error")
+        return None
+
+    if value < 0:
+        flash(f"{label} darf nicht negativ sein.", "error")
+        return None
+    return value

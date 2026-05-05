@@ -1,0 +1,15 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_DEBUG: "1"
+      DATABASE_URL: sqlite:////data/event_jobs.db
+      SECRET_KEY: local-development-key
+    volumes:
+      - event_job_data:/data
+      - .:/app
+
+volumes:
+  event_job_data:

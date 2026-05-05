@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="stats-grid" aria-label="Überblick">
+    <div class="stat-panel accent-teal">
+      <span>Geplante Events</span>
+      <strong>{{ stats.planned_events }}</strong>
+    </div>
+    <div class="stat-panel accent-gold">
+      <span>Inventarpositionen</span>
+      <strong>{{ stats.materials }}</strong>
+    </div>
+    <div class="stat-panel accent-violet">
+      <span>Personal</span>
+      <strong>{{ stats.people }}</strong>
+    </div>
+    <div class="stat-panel accent-red">
+      <span>Voll belegt</span>
+      <strong>{{ stats.alerts }}</strong>
+    </div>
+  </section>
+
+  <div class="workspace">
+    <section id="events" class="primary-flow">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Aufträge</p>
+          <h2>Events</h2>
+        </div>
+      </div>
+
+      <form class="tool-panel event-form" method="post" action="{{ url_for('main.create_event') }}">
+        <div class="form-grid">
+          <label>
+            <span>Name</span>
+            <input name="name" placeholder="Party" required>
+          </label>
+          <label>
+            <span>Beginn</span>
+            <input type="datetime-local" name="starts_at" required>
+          </label>
+          <label>
+            <span>Ende</span>
+            <input type="datetime-local" name="ends_at" required>
+          </label>
+          <label>
+            <span>Ort</span>
+            <input name="location" placeholder="Halle 3" required>
+          </label>
+          <label class="span-2">
+            <span>Notizen</span>
+            <input name="notes" placeholder="Optional">
+          </label>
+        </div>
+        <button class="primary-button" type="submit">Event hinzufügen</button>
+      </form>
+
+      <div class="event-list">
+        {% for event in events %}
+          <article id="event-{{ event.id }}" class="event-card status-{{ event.status }}">
+            <div class="event-card-header">
+              <div>
+                <div class="title-row">
+                  <h3>{{ event.name }}</h3>
+                  <span class="status-pill">{{ event_status_labels[event.status] }}</span>
+                </div>
+                <div class="meta-row">
+                  <span>{{ event.starts_at | date_time }} bis {{ event.ends_at | date_time }}</span>
+                  <span>{{ event.duration_label }}</span>
+                  <span>{{ event.location }}</span>
+                </div>
+              </div>
+              <form class="inline-form" method="post" action="{{ url_for('main.set_event_status', event_id=event.id) }}">
+                <label class="sr-only" for="status-{{ event.id }}">Status</label>
+                <select id="status-{{ event.id }}" name="status">
+                  {% for status in event_statuses %}
+                    <option value="{{ status }}" {% if event.status == status %}selected{% endif %}>{{ event_status_labels[status] }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit">Aktualisieren</button>
+              </form>
+            </div>
+
+            {% if event.notes %}
+              <p class="notes">{{ event.notes }}</p>
+            {% endif %}
+
+            <div class="assignment-grid">
+              <div class="assignment-panel">
+                <div class="panel-heading">
+                  <h4>Material</h4>
+                </div>
+                {% if event.material_assignments %}
+                  <ul class="assignment-list">
+                    {% for assignment in event.material_assignments %}
+                      <li>
+                        <span>{{ assignment.material.name }}</span>
+                        <strong>{{ assignment.quantity }} {{ assignment.material.unit }}</strong>
+                        <form method="post" action="{{ url_for('main.remove_material_assignment', assignment_id=assignment.id) }}">
+                          <button class="ghost-button" type="submit" aria-label="{{ assignment.material.name }} entfernen">Entfernen</button>
+                        </form>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <p class="empty-state">Kein Material zugewiesen.</p>
+                {% endif %}
+
+                <form class="assign-form" method="post" action="{{ url_for('main.assign_material', event_id=event.id) }}">
+                  <label class="sr-only" for="material-{{ event.id }}">Material</label>
+                  <select id="material-{{ event.id }}" name="material_id" required {% if event.status != planned_status %}disabled{% endif %}>
+                    <option value="">Material</option>
+                    {% for row in event_material_options[event.id] %}
+                      <option value="{{ row.item.id }}" {% if row.available == 0 %}disabled{% endif %}>
+                        {{ row.item.name }} · {{ row.available }} {{ row.item.unit }} zuweisbar
+                      </option>
+                    {% endfor %}
+                  </select>
+                  <label class="sr-only" for="quantity-{{ event.id }}">Menge</label>
+                  <input id="quantity-{{ event.id }}" type="number" name="quantity" min="1" step="1" placeholder="Menge" required {% if event.status != planned_status %}disabled{% endif %}>
+                  <button type="submit" {% if event.status != planned_status %}disabled{% endif %}>Zuweisen</button>
+                </form>
+              </div>
+
+              <div class="assignment-panel">
+                <div class="panel-heading">
+                  <h4>Personal</h4>
+                </div>
+                {% if event.personnel_assignments %}
+                  <ul class="assignment-list">
+                    {% for assignment in event.personnel_assignments %}
+                      <li>
+                        <span>{{ assignment.personnel.name }}</span>
+                        <strong>{{ assignment.personnel.role }}</strong>
+                        <form method="post" action="{{ url_for('main.remove_personnel_assignment', assignment_id=assignment.id) }}">
+                          <button class="ghost-button" type="submit" aria-label="{{ assignment.personnel.name }} entfernen">Entfernen</button>
+                        </form>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <p class="empty-state">Kein Personal zugewiesen.</p>
+                {% endif %}
+
+                <form class="assign-form" method="post" action="{{ url_for('main.assign_personnel', event_id=event.id) }}">
+                  <label class="sr-only" for="personnel-{{ event.id }}">Personal</label>
+                  <select id="personnel-{{ event.id }}" name="personnel_id" required {% if event.status != planned_status %}disabled{% endif %}>
+                    <option value="">Person</option>
+                    {% for row in event_personnel_options[event.id] %}
+                      <option value="{{ row.person.id }}" {% if row.conflict %}disabled{% endif %}>
+                        {{ row.person.name }} · {{ "verfügbar" if not row.conflict else "belegt" }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit" {% if event.status != planned_status %}disabled{% endif %}>Zuweisen</button>
+                </form>
+              </div>
+            </div>
+
+            <form class="delete-form" method="post" action="{{ url_for('main.delete_event', event_id=event.id) }}">
+              <button class="danger-button" type="submit">Event löschen</button>
+            </form>
+          </article>
+        {% else %}
+          <div class="empty-panel">
+            <h3>Noch keine Events</h3>
+            <p>Lege oben den ersten Auftrag an und weise danach Inventar und Personal direkt im Event zu.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <aside class="secondary-flow">
+      <section id="inventory" class="tool-panel">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">Bestand</p>
+            <h2>Inventar</h2>
+          </div>
+        </div>
+
+        <form method="post" action="{{ url_for('main.create_material') }}" class="stacked-form">
+          <label>
+            <span>Name</span>
+            <input name="name" placeholder="Flammenwerfer" required>
+          </label>
+          <div class="two-column">
+            <label>
+              <span>Art</span>
+              <select name="kind" required>
+                <option value="{{ material_fixed }}">{{ material_kind_labels[material_fixed] }}</option>
+                <option value="{{ material_consumable }}">{{ material_kind_labels[material_consumable] }}</option>
+              </select>
+            </label>
+            <label>
+              <span>Einheit</span>
+              <input name="unit" value="Stk." required>
+            </label>
+          </div>
+          <label>
+            <span>Gesamtmenge</span>
+            <input type="number" name="total_quantity" min="0" step="1" value="1" required>
+          </label>
+          <button class="primary-button" type="submit">Material hinzufügen</button>
+        </form>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Position</th>
+                <th>Gesamt</th>
+                <th>Gebunden / verbraucht</th>
+                <th>Frei</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in material_rows %}
+                <tr>
+                  <td>
+                    <strong>{{ row.item.name }}</strong>
+                    <span class="subtle">{{ material_kind_labels[row.item.kind] }}</span>
+                  </td>
+                  <td>{{ row.item.total_quantity }} {{ row.item.unit }}</td>
+                  <td>{{ row.allocated }}</td>
+                  <td>
+                    <span class="availability {% if row.available == 0 and row.item.total_quantity > 0 %}empty{% endif %}">
+                      {{ row.available }}
+                    </span>
+                  </td>
+                  <td>
+                    <form method="post" action="{{ url_for('main.delete_material', material_id=row.item.id) }}">
+                      <button class="icon-button" type="submit" aria-label="{{ row.item.name }} löschen">×</button>
+                    </form>
+                  </td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="5" class="empty-cell">Keine Inventarpositionen.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="personnel" class="tool-panel">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">Team</p>
+            <h2>Personal</h2>
+          </div>
+        </div>
+
+        <form method="post" action="{{ url_for('main.create_personnel') }}" class="stacked-form">
+          <label>
+            <span>Name</span>
+            <input name="name" placeholder="Alex Morgan" required>
+          </label>
+          <label>
+            <span>Rolle</span>
+            <input name="role" value="Team" required>
+          </label>
+          <label>
+            <span>Kontakt</span>
+            <input name="contact" placeholder="Optional">
+          </label>
+          <button class="primary-button" type="submit">Person hinzufügen</button>
+        </form>
+
+        <div class="person-list">
+          {% for row in personnel_rows %}
+            <div class="person-row">
+              <div>
+                <strong>{{ row.person.name }}</strong>
+                <span>{{ row.person.role }}</span>
+              </div>
+              <span class="availability {% if not row.available %}empty{% endif %}">
+                {{ "Frei" if row.available else "Belegt" }}
+              </span>
+              <form method="post" action="{{ url_for('main.delete_personnel', personnel_id=row.person.id) }}">
+                <button class="icon-button" type="submit" aria-label="{{ row.person.name }} löschen">×</button>
+              </form>
+            </div>
+          {% else %}
+            <p class="empty-state">Kein Personal.</p>
+          {% endfor %}
+        </div>
+      </section>
+    </aside>
+  </div>
+{% endblock %}
