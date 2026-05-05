@@ -69,15 +69,17 @@
                   <span>{{ event.location }}</span>
                 </div>
               </div>
-              <form class="inline-form" method="post" action="{{ url_for('main.set_event_status', event_id=event.id) }}">
-                <label class="sr-only" for="status-{{ event.id }}">Status</label>
-                <select id="status-{{ event.id }}" name="status">
-                  {% for status in event_statuses %}
-                    <option value="{{ status }}" {% if event.status == status %}selected{% endif %}>{{ event_status_labels[status] }}</option>
-                  {% endfor %}
-                </select>
-                <button type="submit">Aktualisieren</button>
-              </form>
+              {% if event.status == planned_status %}
+                <form class="inline-form" method="post" action="{{ url_for('main.close_event', event_id=event.id) }}">
+                  <label class="sr-only" for="closure-status-{{ event.id }}">Abschluss</label>
+                  <select id="closure-status-{{ event.id }}" name="status">
+                    {% for status in event_closure_statuses %}
+                      <option value="{{ status }}">{{ event_status_labels[status] }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit">Event abschließen</button>
+                </form>
+              {% endif %}
             </div>
 
             {% if event.notes %}

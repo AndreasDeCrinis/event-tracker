@@ -20,7 +20,7 @@ docker compose run --rm web pytest
 
 ## Publish Docker Image
 
-The GitHub Actions workflow publishes `adecrinis/event-job-tracker` to Docker Hub when you push a semantic version tag:
+The GitHub Actions workflow publishes `adcrinis/event-job-tracker` to Docker Hub when you push a semantic version tag:
 
 ```bash
 git tag v1.2.3

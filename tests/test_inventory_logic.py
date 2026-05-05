@@ -6,7 +6,9 @@ from app import create_app, db
 from app.models import (
     MATERIAL_CONSUMABLE,
     MATERIAL_FIXED,
+    STATUS_CANCELLED,
     STATUS_COMPLETED,
+    STATUS_PLANNED,
     Event,
     EventMaterial,
     EventPersonnel,
@@ -145,3 +147,45 @@ def test_personnel_conflict_only_blocks_overlapping_planned_events(app):
 
         assert personnel_has_conflict(person, overlap)
         assert not personnel_has_conflict(person, later)
+
+
+def test_event_can_be_closed_as_successfully_completed(app):
+    with app.app_context():
+        event = make_event("Show", date(2026, 9, 1), date(2026, 9, 1))
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
+
+    response = app.test_client().post(f"/events/{event_id}/close", data={"status": STATUS_COMPLETED})
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Event, event_id).status == STATUS_COMPLETED
+
+
+def test_event_can_be_closed_as_cancelled(app):
+    with app.app_context():
+        event = make_event("Cancelled show", date(2026, 9, 2), date(2026, 9, 2))
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
+
+    response = app.test_client().post(f"/events/{event_id}/close", data={"status": STATUS_CANCELLED})
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Event, event_id).status == STATUS_CANCELLED
+
+
+def test_event_closure_rejects_planned_status(app):
+    with app.app_context():
+        event = make_event("Still planned", date(2026, 9, 3), date(2026, 9, 3))
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
+
+    response = app.test_client().post(f"/events/{event_id}/close", data={"status": STATUS_PLANNED})
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Event, event_id).status == STATUS_PLANNED

@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
 
 env:
-  IMAGE_NAME: adecrinis/event-job-tracker
+  IMAGE_NAME: adcrinis/event-job-tracker
 
 jobs:
   docker:

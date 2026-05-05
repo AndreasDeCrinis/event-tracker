@@ -4,7 +4,6 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from . import db
 from .models import (
-    EVENT_STATUSES,
     MATERIAL_CONSUMABLE,
     MATERIAL_FIXED,
     MATERIAL_KINDS,
@@ -29,9 +28,11 @@ bp = Blueprint("main", __name__)
 
 EVENT_STATUS_LABELS = {
     STATUS_PLANNED: "Geplant",
-    STATUS_COMPLETED: "Abgeschlossen",
+    STATUS_COMPLETED: "Erfolgreich abgeschlossen",
     STATUS_CANCELLED: "Abgesagt",
 }
+
+EVENT_CLOSURE_STATUSES = (STATUS_COMPLETED, STATUS_CANCELLED)
 
 MATERIAL_KIND_LABELS = {
     MATERIAL_FIXED: "Festes Material",
@@ -42,9 +43,12 @@ MATERIAL_KIND_LABELS = {
 @bp.get("/")
 def index():
     moment = datetime.now()
+    today_start = datetime.combine(moment.date(), time.min)
     events = Event.query.order_by(Event.starts_at.asc(), Event.name.asc()).all()
     materials = Material.query.order_by(Material.name.asc()).all()
     people = Personnel.query.order_by(Personnel.name.asc()).all()
+    active_events = [event for event in events if not _event_is_archived(event, today_start)]
+    archive_events = [event for event in events if _event_is_archived(event, today_start)]
 
     material_rows = [
         {
@@ -85,15 +89,16 @@ def index():
 
     stats = {
         "events": len(events),
-        "planned_events": sum(1 for event in events if event.status == STATUS_PLANNED),
+        "active_events": len(active_events),
+        "archived_events": len(archive_events),
         "materials": len(materials),
         "people": len(people),
-        "alerts": sum(1 for row in material_rows if row["available"] == 0 and row["item"].total_quantity > 0),
     }
 
     return render_template(
         "index.html",
-        events=events,
+        active_events=active_events,
+        archive_events=archive_events,
         material_rows=material_rows,
         personnel_rows=personnel_rows,
         event_material_options=event_material_options,
@@ -103,8 +108,8 @@ def index():
         material_kind_labels=MATERIAL_KIND_LABELS,
         material_fixed=MATERIAL_FIXED,
         material_consumable=MATERIAL_CONSUMABLE,
-        event_statuses=EVENT_STATUSES,
         event_status_labels=EVENT_STATUS_LABELS,
+        event_closure_statuses=EVENT_CLOSURE_STATUSES,
         planned_status=STATUS_PLANNED,
     )
 
@@ -143,18 +148,18 @@ def create_event():
     return _redirect("events")
 
 
-@bp.post("/events/<int:event_id>/status")
-def set_event_status(event_id):
+@bp.post("/events/<int:event_id>/close")
+def close_event(event_id):
     event = Event.query.get_or_404(event_id)
     status = request.form.get("status")
 
-    if status not in EVENT_STATUSES:
-        flash("Bitte einen gültigen Event-Status wählen.", "error")
+    if status not in EVENT_CLOSURE_STATUSES:
+        flash("Bitte einen gültigen Abschlussstatus wählen.", "error")
         return _redirect("event-" + str(event.id))
 
     event.status = status
     db.session.commit()
-    flash(f"{event.name} ist jetzt {EVENT_STATUS_LABELS[event.status].lower()}.", "success")
+    flash(f"{event.name} wurde als {EVENT_STATUS_LABELS[event.status].lower()} markiert.", "success")
     return _redirect("event-" + str(event.id))
 
 
@@ -322,6 +327,12 @@ def _parse_date_local(value):
 
 def _redirect(anchor):
     return redirect(url_for("main.index") + f"#{anchor}")
+
+
+def _event_is_archived(event, today_start):
+    return event.status in (STATUS_COMPLETED, STATUS_CANCELLED) or (
+        event.status == STATUS_PLANNED and event.ends_at <= today_start
+    )
 
 
 def _required_text(field, label):
