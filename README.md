@@ -18,6 +18,22 @@ The SQLite database is stored in the Docker volume `event_job_data`, so your dat
 docker compose run --rm web pytest
 ```
 
+## Publish Docker Image
+
+The GitHub Actions workflow publishes `adecrinis/event-job-tracker` to Docker Hub when you push a semantic version tag:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+It pushes `1.2.3`, `1.2`, `1`, and `latest`.
+
+Required GitHub repository secrets:
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
 ## Inventory Logic
 
 - Fixed materials, such as flamethrowers, are reserved only for planned events that overlap the same time window. Once the event window is over, they are free again.

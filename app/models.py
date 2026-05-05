@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time, timedelta
 
 from sqlalchemy import CheckConstraint, UniqueConstraint
 
@@ -43,15 +43,14 @@ class Event(db.Model):
     )
 
     @property
-    def duration_label(self):
-        minutes = max(int((self.ends_at - self.starts_at).total_seconds() // 60), 0)
-        hours, remaining_minutes = divmod(minutes, 60)
+    def starts_on(self):
+        return self.starts_at.date()
 
-        if remaining_minutes == 0:
-            return f"{hours} h"
-        if hours == 0:
-            return f"{remaining_minutes} min"
-        return f"{hours} h {remaining_minutes} min"
+    @property
+    def ends_on(self):
+        if self.starts_at.time() == time.min and self.ends_at.time() == time.min:
+            return (self.ends_at - timedelta(days=1)).date()
+        return self.ends_at.date()
 
     @property
     def status_label(self):

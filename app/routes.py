@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time, timedelta
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
@@ -112,28 +112,28 @@ def index():
 @bp.post("/events")
 def create_event():
     name = _required_text("name", "Event-Name")
-    starts_at_value = _required_text("starts_at", "Beginn")
-    ends_at_value = _required_text("ends_at", "Ende")
+    starts_on_value = _required_text("starts_on", "Beginn")
+    ends_on_value = _required_text("ends_on", "Ende")
     location = _required_text("location", "Ort")
 
-    if not all((name, starts_at_value, ends_at_value, location)):
+    if not all((name, starts_on_value, ends_on_value, location)):
         return _redirect("events")
 
     try:
-        starts_at = _parse_datetime_local(starts_at_value)
-        ends_at = _parse_datetime_local(ends_at_value)
+        starts_on = _parse_date_local(starts_on_value)
+        ends_on = _parse_date_local(ends_on_value)
     except ValueError:
-        flash("Bitte einen gültigen Beginn und ein gültiges Ende verwenden.", "error")
+        flash("Bitte ein gültiges Beginndatum und ein gültiges Enddatum verwenden.", "error")
         return _redirect("events")
 
-    if ends_at <= starts_at:
-        flash("Das Ende muss nach dem Beginn liegen.", "error")
+    if ends_on < starts_on:
+        flash("Das Enddatum darf nicht vor dem Beginndatum liegen.", "error")
         return _redirect("events")
 
     event = Event(
         name=name,
-        starts_at=starts_at,
-        ends_at=ends_at,
+        starts_at=datetime.combine(starts_on, time.min),
+        ends_at=datetime.combine(ends_on + timedelta(days=1), time.min),
         location=location,
         notes=_optional_text("notes"),
     )
@@ -311,23 +311,13 @@ def remove_personnel_assignment(assignment_id):
     return _redirect("event-" + str(event_id))
 
 
-@bp.app_template_filter("date_time")
-def date_time(value):
-    return value.strftime("%d.%m.%Y %H:%M")
-
-
 @bp.app_template_filter("date_only")
 def date_only(value):
-    return value.strftime("%Y-%m-%d")
+    return value.strftime("%d.%m.%Y")
 
 
-@bp.app_template_filter("time_only")
-def time_only(value):
-    return value.strftime("%H:%M")
-
-
-def _parse_datetime_local(value):
-    return datetime.strptime(value, "%Y-%m-%dT%H:%M")
+def _parse_date_local(value):
+    return datetime.strptime(value, "%Y-%m-%d").date()
 
 
 def _redirect(anchor):
@@ -344,19 +334,6 @@ def _required_text(field, label):
 
 def _optional_text(field):
     return (request.form.get(field) or "").strip() or None
-
-
-def _positive_float(field, label):
-    try:
-        value = float(request.form.get(field, ""))
-    except ValueError:
-        flash(f"{label} muss eine Zahl sein.", "error")
-        return None
-
-    if value <= 0:
-        flash(f"{label} muss größer als null sein.", "error")
-        return None
-    return value
 
 
 def _positive_int(field, label):

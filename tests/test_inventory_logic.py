@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 
 import pytest
 
@@ -17,6 +17,15 @@ from app.models import (
     personnel_has_conflict,
     personnel_is_available,
 )
+
+
+def make_event(name, starts_on, ends_on, location="Hall"):
+    return Event(
+        name=name,
+        starts_at=datetime.combine(starts_on, time.min),
+        ends_at=datetime.combine(ends_on + timedelta(days=1), time.min),
+        location=location,
+    )
 
 
 @pytest.fixture()
@@ -40,18 +49,8 @@ def app():
 def test_fixed_material_availability_counts_active_planned_assignments(app):
     with app.app_context():
         flamethrowers = Material(name="Flamethrowers", kind=MATERIAL_FIXED, total_quantity=10, unit="pcs")
-        party = Event(
-            name="Party",
-            starts_at=datetime(2026, 6, 1, 18),
-            ends_at=datetime(2026, 6, 1, 22),
-            location="Hall",
-        )
-        birthday = Event(
-            name="Birthday",
-            starts_at=datetime(2026, 6, 1, 19),
-            ends_at=datetime(2026, 6, 1, 22),
-            location="Garden",
-        )
+        party = make_event("Party", date(2026, 6, 1), date(2026, 6, 1))
+        birthday = make_event("Birthday", date(2026, 6, 1), date(2026, 6, 1), location="Garden")
         db.session.add_all([flamethrowers, party, birthday])
         db.session.flush()
         db.session.add_all(
@@ -62,71 +61,46 @@ def test_fixed_material_availability_counts_active_planned_assignments(app):
         )
         db.session.commit()
 
-        assert material_available_quantity(flamethrowers, moment=datetime(2026, 6, 1, 20)) == 4
-        assert material_available_quantity(flamethrowers, moment=datetime(2026, 6, 1, 23)) == 10
+        assert material_available_quantity(flamethrowers, moment=datetime(2026, 6, 1)) == 4
+        assert material_available_quantity(flamethrowers, moment=datetime(2026, 6, 2)) == 10
 
 
 def test_fixed_material_can_be_reused_for_non_overlapping_events(app):
     with app.app_context():
         item = Material(name="Projectors", kind=MATERIAL_FIXED, total_quantity=5, unit="pcs")
-        morning = Event(
-            name="Morning",
-            starts_at=datetime(2026, 6, 1, 10),
-            ends_at=datetime(2026, 6, 1, 12),
-            location="Hall",
-        )
-        overlap = Event(
-            name="Overlap",
-            starts_at=datetime(2026, 6, 1, 11),
-            ends_at=datetime(2026, 6, 1, 13),
-            location="Hall",
-        )
-        afternoon = Event(
-            name="Afternoon",
-            starts_at=datetime(2026, 6, 1, 13),
-            ends_at=datetime(2026, 6, 1, 15),
-            location="Hall",
-        )
-        db.session.add_all([item, morning, overlap, afternoon])
+        day_one = make_event("Day one", date(2026, 6, 1), date(2026, 6, 1))
+        overlap = make_event("Overlap", date(2026, 6, 1), date(2026, 6, 1))
+        later = make_event("Later", date(2026, 6, 2), date(2026, 6, 2))
+        db.session.add_all([item, day_one, overlap, later])
         db.session.flush()
-        db.session.add(EventMaterial(event=morning, material=item, quantity=4))
+        db.session.add(EventMaterial(event=day_one, material=item, quantity=4))
         db.session.commit()
 
         assert material_assignable_quantity(item, overlap) == 1
-        assert material_assignable_quantity(item, afternoon) == 5
+        assert material_assignable_quantity(item, later) == 5
 
 
 def test_fixed_material_returns_after_completion(app):
     with app.app_context():
         item = Material(name="Stage lights", kind=MATERIAL_FIXED, total_quantity=6, unit="pcs")
-        event = Event(
-            name="Show",
-            starts_at=datetime(2026, 6, 4, 19),
-            ends_at=datetime(2026, 6, 4, 21),
-            location="Club",
-        )
+        event = make_event("Show", date(2026, 6, 4), date(2026, 6, 4), location="Club")
         db.session.add_all([item, event])
         db.session.flush()
         db.session.add(EventMaterial(event=event, material=item, quantity=5))
         db.session.commit()
 
-        assert material_available_quantity(item, moment=datetime(2026, 6, 4, 20)) == 1
+        assert material_available_quantity(item, moment=datetime(2026, 6, 4)) == 1
 
         event.status = STATUS_COMPLETED
         db.session.commit()
 
-        assert material_available_quantity(item, moment=datetime(2026, 6, 4, 20)) == 6
+        assert material_available_quantity(item, moment=datetime(2026, 6, 4)) == 6
 
 
 def test_consumable_material_stays_deducted_after_completion(app):
     with app.app_context():
         fuel = Material(name="Flamethrower fuel", kind=MATERIAL_CONSUMABLE, total_quantity=20, unit="L")
-        event = Event(
-            name="Night show",
-            starts_at=datetime(2026, 6, 5, 21),
-            ends_at=datetime(2026, 6, 5, 22, 30),
-            location="Arena",
-        )
+        event = make_event("Night show", date(2026, 6, 5), date(2026, 6, 5), location="Arena")
         db.session.add_all([fuel, event])
         db.session.flush()
         db.session.add(EventMaterial(event=event, material=fuel, quantity=7))
@@ -143,47 +117,27 @@ def test_consumable_material_stays_deducted_after_completion(app):
 def test_personnel_is_available_after_completed_event(app):
     with app.app_context():
         person = Personnel(name="Alex Morgan", role="Pyro tech")
-        event = Event(
-            name="Launch",
-            starts_at=datetime(2026, 7, 1, 20),
-            ends_at=datetime(2026, 7, 1, 22),
-            location="Pier",
-        )
+        event = make_event("Launch", date(2026, 7, 1), date(2026, 7, 1), location="Pier")
         db.session.add_all([person, event])
         db.session.flush()
         db.session.add(EventPersonnel(event=event, personnel=person))
         db.session.commit()
 
-        assert not personnel_is_available(person, moment=datetime(2026, 7, 1, 21))
-        assert personnel_is_available(person, moment=datetime(2026, 7, 1, 23))
+        assert not personnel_is_available(person, moment=datetime(2026, 7, 1))
+        assert personnel_is_available(person, moment=datetime(2026, 7, 2))
 
         event.status = STATUS_COMPLETED
         db.session.commit()
 
-        assert personnel_is_available(person, moment=datetime(2026, 7, 1, 21))
+        assert personnel_is_available(person, moment=datetime(2026, 7, 1))
 
 
 def test_personnel_conflict_only_blocks_overlapping_planned_events(app):
     with app.app_context():
         person = Personnel(name="Sam Rivera", role="Tech")
-        first = Event(
-            name="First",
-            starts_at=datetime(2026, 8, 1, 10),
-            ends_at=datetime(2026, 8, 1, 12),
-            location="A",
-        )
-        overlap = Event(
-            name="Overlap",
-            starts_at=datetime(2026, 8, 1, 11),
-            ends_at=datetime(2026, 8, 1, 13),
-            location="B",
-        )
-        later = Event(
-            name="Later",
-            starts_at=datetime(2026, 8, 1, 13),
-            ends_at=datetime(2026, 8, 1, 15),
-            location="C",
-        )
+        first = make_event("First", date(2026, 8, 1), date(2026, 8, 1), location="A")
+        overlap = make_event("Overlap", date(2026, 8, 1), date(2026, 8, 1), location="B")
+        later = make_event("Later", date(2026, 8, 2), date(2026, 8, 2), location="C")
         db.session.add_all([person, first, overlap, later])
         db.session.flush()
         db.session.add(EventPersonnel(event=first, personnel=person))

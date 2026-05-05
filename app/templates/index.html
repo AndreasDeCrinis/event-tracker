@@ -37,11 +37,11 @@
           </label>
           <label>
             <span>Beginn</span>
-            <input type="datetime-local" name="starts_at" required>
+            <input type="date" name="starts_on" required>
           </label>
           <label>
             <span>Ende</span>
-            <input type="datetime-local" name="ends_at" required>
+            <input type="date" name="ends_on" required>
           </label>
           <label>
             <span>Ort</span>
@@ -65,8 +65,7 @@
                   <span class="status-pill">{{ event_status_labels[event.status] }}</span>
                 </div>
                 <div class="meta-row">
-                  <span>{{ event.starts_at | date_time }} bis {{ event.ends_at | date_time }}</span>
-                  <span>{{ event.duration_label }}</span>
+                  <span>{{ event.starts_on | date_only }} bis {{ event.ends_on | date_only }}</span>
                   <span>{{ event.location }}</span>
                 </div>
               </div>
