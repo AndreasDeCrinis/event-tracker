@@ -189,3 +189,43 @@ def test_event_closure_rejects_planned_status(app):
     assert response.status_code == 302
     with app.app_context():
         assert db.session.get(Event, event_id).status == STATUS_PLANNED
+
+
+def test_archive_lists_completed_cancelled_and_past_events(app):
+    with app.app_context():
+        active = make_event("Future active job", date(2999, 1, 1), date(2999, 1, 1))
+        past = make_event("Past planned job", date(2000, 1, 1), date(2000, 1, 1))
+        completed = make_event("Completed archive job", date(2999, 1, 2), date(2999, 1, 2))
+        completed.status = STATUS_COMPLETED
+        cancelled = make_event("Cancelled archive job", date(2999, 1, 3), date(2999, 1, 3))
+        cancelled.status = STATUS_CANCELLED
+        db.session.add_all([active, past, completed, cancelled])
+        db.session.commit()
+
+    html = app.test_client().get("/").data.decode()
+    active_section = html.rindex("<h2>Aktive Events</h2>")
+    archive_section = html.rindex("<h2>Job-Archiv</h2>")
+
+    assert active_section < html.index("Future active job") < archive_section
+    assert html.index("Past planned job") > archive_section
+    assert html.index("Completed archive job") > archive_section
+    assert html.index("Cancelled archive job") > archive_section
+
+
+def test_past_planned_event_rejects_new_material_assignment(app):
+    with app.app_context():
+        material = Material(name="Archived item", kind=MATERIAL_FIXED, total_quantity=5, unit="pcs")
+        event = make_event("Past event", date(2000, 1, 1), date(2000, 1, 1))
+        db.session.add_all([material, event])
+        db.session.commit()
+        event_id = event.id
+        material_id = material.id
+
+    response = app.test_client().post(
+        f"/events/{event_id}/materials",
+        data={"material_id": material_id, "quantity": 1},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert EventMaterial.query.filter_by(event_id=event_id, material_id=material_id).count() == 0

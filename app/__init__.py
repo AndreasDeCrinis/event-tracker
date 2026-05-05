@@ -4,6 +4,7 @@ import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 
 db = SQLAlchemy()
@@ -17,6 +18,9 @@ def create_app(config=None):
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev"),
         SQLALCHEMY_DATABASE_URI=database_url,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        PREFERRED_URL_SCHEME=os.environ.get("PREFERRED_URL_SCHEME", "http"),
+        SESSION_COOKIE_SECURE=_env_bool("SESSION_COOKIE_SECURE", False),
+        SESSION_COOKIE_SAMESITE="Lax",
     )
 
     if config:
@@ -24,6 +28,7 @@ def create_app(config=None):
 
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     _ensure_sqlite_directory(app.config["SQLALCHEMY_DATABASE_URI"])
+    _apply_proxy_fix(app)
 
     db.init_app(app)
 
@@ -45,6 +50,35 @@ def _ensure_sqlite_directory(database_url):
     database_path = database_url.replace("sqlite:///", "", 1)
     if database_path:
         Path(database_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+
+
+def _apply_proxy_fix(app):
+    trusted_proxy_count = _env_int("TRUSTED_PROXY_COUNT", 0)
+    if trusted_proxy_count <= 0:
+        return
+
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=trusted_proxy_count,
+        x_proto=trusted_proxy_count,
+        x_host=trusted_proxy_count,
+        x_port=trusted_proxy_count,
+        x_prefix=trusted_proxy_count,
+    )
+
+
+def _env_bool(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name, default=0):
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
 
 
 def _migrate_database():

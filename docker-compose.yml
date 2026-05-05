@@ -7,6 +7,9 @@ services:
       FLASK_DEBUG: "1"
       DATABASE_URL: sqlite:////data/event_jobs.db
       SECRET_KEY: local-development-key
+      PREFERRED_URL_SCHEME: https
+      TRUSTED_PROXY_COUNT: "1"
+      SESSION_COOKIE_SECURE: "1"
     volumes:
       - event_job_data:/data
       - .:/app

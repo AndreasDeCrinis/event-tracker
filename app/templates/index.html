@@ -3,29 +3,146 @@
 {% block content %}
   <section class="stats-grid" aria-label="Überblick">
     <div class="stat-panel accent-teal">
-      <span>Geplante Events</span>
-      <strong>{{ stats.planned_events }}</strong>
+      <span>Aktive Events</span>
+      <strong>{{ stats.active_events }}</strong>
     </div>
     <div class="stat-panel accent-gold">
+      <span>Archivierte Jobs</span>
+      <strong>{{ stats.archived_events }}</strong>
+    </div>
+    <div class="stat-panel accent-violet">
       <span>Inventarpositionen</span>
       <strong>{{ stats.materials }}</strong>
     </div>
-    <div class="stat-panel accent-violet">
+    <div class="stat-panel accent-red">
       <span>Personal</span>
       <strong>{{ stats.people }}</strong>
     </div>
-    <div class="stat-panel accent-red">
-      <span>Voll belegt</span>
-      <strong>{{ stats.alerts }}</strong>
-    </div>
   </section>
+
+  {% macro event_card(event, archived=false) %}
+    {% set can_assign = event.status == planned_status and not archived %}
+    <article id="event-{{ event.id }}" class="event-card status-{{ event.status }} {% if archived %}archived-card{% endif %}">
+      <div class="event-card-header">
+        <div>
+          <div class="title-row">
+            <h3>{{ event.name }}</h3>
+            <span class="status-pill">{{ event_status_labels[event.status] }}</span>
+          </div>
+          <div class="meta-row">
+            <span>{{ event.starts_on | date_only }} bis {{ event.ends_on | date_only }}</span>
+            <span>{{ event.location }}</span>
+          </div>
+        </div>
+        {% if event.status == planned_status %}
+          <form class="inline-form" method="post" action="{{ url_for('main.close_event', event_id=event.id) }}">
+            <label class="sr-only" for="closure-status-{{ event.id }}">Abschluss</label>
+            <select id="closure-status-{{ event.id }}" name="status">
+              {% for status in event_closure_statuses %}
+                <option value="{{ status }}">{{ event_status_labels[status] }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit">Event abschließen</button>
+          </form>
+        {% endif %}
+      </div>
+
+      {% if event.notes %}
+        <p class="notes">{{ event.notes }}</p>
+      {% endif %}
+
+      <div class="assignment-grid">
+        <div class="assignment-panel">
+          <div class="panel-heading">
+            <h4>Material</h4>
+          </div>
+          {% if event.material_assignments %}
+            <ul class="assignment-list">
+              {% for assignment in event.material_assignments %}
+                <li>
+                  <span>{{ assignment.material.name }}</span>
+                  <strong>{{ assignment.quantity }} {{ assignment.material.unit }}</strong>
+                  {% if can_assign %}
+                    <form method="post" action="{{ url_for('main.remove_material_assignment', assignment_id=assignment.id) }}">
+                      <button class="ghost-button" type="submit" aria-label="{{ assignment.material.name }} entfernen">Entfernen</button>
+                    </form>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="empty-state">Kein Material zugewiesen.</p>
+          {% endif %}
+
+          {% if can_assign %}
+            <form class="assign-form" method="post" action="{{ url_for('main.assign_material', event_id=event.id) }}">
+              <label class="sr-only" for="material-{{ event.id }}">Material</label>
+              <select id="material-{{ event.id }}" name="material_id" required>
+                <option value="">Material</option>
+                {% for row in event_material_options[event.id] %}
+                  <option value="{{ row.item.id }}" {% if row.available == 0 %}disabled{% endif %}>
+                    {{ row.item.name }} · {{ row.available }} {{ row.item.unit }} zuweisbar
+                  </option>
+                {% endfor %}
+              </select>
+              <label class="sr-only" for="quantity-{{ event.id }}">Menge</label>
+              <input id="quantity-{{ event.id }}" type="number" name="quantity" min="1" step="1" placeholder="Menge" required>
+              <button type="submit">Zuweisen</button>
+            </form>
+          {% endif %}
+        </div>
+
+        <div class="assignment-panel">
+          <div class="panel-heading">
+            <h4>Personal</h4>
+          </div>
+          {% if event.personnel_assignments %}
+            <ul class="assignment-list">
+              {% for assignment in event.personnel_assignments %}
+                <li>
+                  <span>{{ assignment.personnel.name }}</span>
+                  <strong>{{ assignment.personnel.role }}</strong>
+                  {% if can_assign %}
+                    <form method="post" action="{{ url_for('main.remove_personnel_assignment', assignment_id=assignment.id) }}">
+                      <button class="ghost-button" type="submit" aria-label="{{ assignment.personnel.name }} entfernen">Entfernen</button>
+                    </form>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="empty-state">Kein Personal zugewiesen.</p>
+          {% endif %}
+
+          {% if can_assign %}
+            <form class="assign-form" method="post" action="{{ url_for('main.assign_personnel', event_id=event.id) }}">
+              <label class="sr-only" for="personnel-{{ event.id }}">Personal</label>
+              <select id="personnel-{{ event.id }}" name="personnel_id" required>
+                <option value="">Person</option>
+                {% for row in event_personnel_options[event.id] %}
+                  <option value="{{ row.person.id }}" {% if row.conflict %}disabled{% endif %}>
+                    {{ row.person.name }} · {{ "verfügbar" if not row.conflict else "belegt" }}
+                  </option>
+                {% endfor %}
+              </select>
+              <button type="submit">Zuweisen</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <form class="delete-form" method="post" action="{{ url_for('main.delete_event', event_id=event.id) }}">
+        <button class="danger-button" type="submit">Event löschen</button>
+      </form>
+    </article>
+  {% endmacro %}
 
   <div class="workspace">
     <section id="events" class="primary-flow">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Aufträge</p>
-          <h2>Events</h2>
+          <h2>Aktive Events</h2>
         </div>
       </div>
 
@@ -56,119 +173,34 @@
       </form>
 
       <div class="event-list">
-        {% for event in events %}
-          <article id="event-{{ event.id }}" class="event-card status-{{ event.status }}">
-            <div class="event-card-header">
-              <div>
-                <div class="title-row">
-                  <h3>{{ event.name }}</h3>
-                  <span class="status-pill">{{ event_status_labels[event.status] }}</span>
-                </div>
-                <div class="meta-row">
-                  <span>{{ event.starts_on | date_only }} bis {{ event.ends_on | date_only }}</span>
-                  <span>{{ event.location }}</span>
-                </div>
-              </div>
-              {% if event.status == planned_status %}
-                <form class="inline-form" method="post" action="{{ url_for('main.close_event', event_id=event.id) }}">
-                  <label class="sr-only" for="closure-status-{{ event.id }}">Abschluss</label>
-                  <select id="closure-status-{{ event.id }}" name="status">
-                    {% for status in event_closure_statuses %}
-                      <option value="{{ status }}">{{ event_status_labels[status] }}</option>
-                    {% endfor %}
-                  </select>
-                  <button type="submit">Event abschließen</button>
-                </form>
-              {% endif %}
-            </div>
-
-            {% if event.notes %}
-              <p class="notes">{{ event.notes }}</p>
-            {% endif %}
-
-            <div class="assignment-grid">
-              <div class="assignment-panel">
-                <div class="panel-heading">
-                  <h4>Material</h4>
-                </div>
-                {% if event.material_assignments %}
-                  <ul class="assignment-list">
-                    {% for assignment in event.material_assignments %}
-                      <li>
-                        <span>{{ assignment.material.name }}</span>
-                        <strong>{{ assignment.quantity }} {{ assignment.material.unit }}</strong>
-                        <form method="post" action="{{ url_for('main.remove_material_assignment', assignment_id=assignment.id) }}">
-                          <button class="ghost-button" type="submit" aria-label="{{ assignment.material.name }} entfernen">Entfernen</button>
-                        </form>
-                      </li>
-                    {% endfor %}
-                  </ul>
-                {% else %}
-                  <p class="empty-state">Kein Material zugewiesen.</p>
-                {% endif %}
-
-                <form class="assign-form" method="post" action="{{ url_for('main.assign_material', event_id=event.id) }}">
-                  <label class="sr-only" for="material-{{ event.id }}">Material</label>
-                  <select id="material-{{ event.id }}" name="material_id" required {% if event.status != planned_status %}disabled{% endif %}>
-                    <option value="">Material</option>
-                    {% for row in event_material_options[event.id] %}
-                      <option value="{{ row.item.id }}" {% if row.available == 0 %}disabled{% endif %}>
-                        {{ row.item.name }} · {{ row.available }} {{ row.item.unit }} zuweisbar
-                      </option>
-                    {% endfor %}
-                  </select>
-                  <label class="sr-only" for="quantity-{{ event.id }}">Menge</label>
-                  <input id="quantity-{{ event.id }}" type="number" name="quantity" min="1" step="1" placeholder="Menge" required {% if event.status != planned_status %}disabled{% endif %}>
-                  <button type="submit" {% if event.status != planned_status %}disabled{% endif %}>Zuweisen</button>
-                </form>
-              </div>
-
-              <div class="assignment-panel">
-                <div class="panel-heading">
-                  <h4>Personal</h4>
-                </div>
-                {% if event.personnel_assignments %}
-                  <ul class="assignment-list">
-                    {% for assignment in event.personnel_assignments %}
-                      <li>
-                        <span>{{ assignment.personnel.name }}</span>
-                        <strong>{{ assignment.personnel.role }}</strong>
-                        <form method="post" action="{{ url_for('main.remove_personnel_assignment', assignment_id=assignment.id) }}">
-                          <button class="ghost-button" type="submit" aria-label="{{ assignment.personnel.name }} entfernen">Entfernen</button>
-                        </form>
-                      </li>
-                    {% endfor %}
-                  </ul>
-                {% else %}
-                  <p class="empty-state">Kein Personal zugewiesen.</p>
-                {% endif %}
-
-                <form class="assign-form" method="post" action="{{ url_for('main.assign_personnel', event_id=event.id) }}">
-                  <label class="sr-only" for="personnel-{{ event.id }}">Personal</label>
-                  <select id="personnel-{{ event.id }}" name="personnel_id" required {% if event.status != planned_status %}disabled{% endif %}>
-                    <option value="">Person</option>
-                    {% for row in event_personnel_options[event.id] %}
-                      <option value="{{ row.person.id }}" {% if row.conflict %}disabled{% endif %}>
-                        {{ row.person.name }} · {{ "verfügbar" if not row.conflict else "belegt" }}
-                      </option>
-                    {% endfor %}
-                  </select>
-                  <button type="submit" {% if event.status != planned_status %}disabled{% endif %}>Zuweisen</button>
-                </form>
-              </div>
-            </div>
-
-            <form class="delete-form" method="post" action="{{ url_for('main.delete_event', event_id=event.id) }}">
-              <button class="danger-button" type="submit">Event löschen</button>
-            </form>
-          </article>
+        {% for event in active_events %}
+          {{ event_card(event) }}
         {% else %}
           <div class="empty-panel">
-            <h3>Noch keine Events</h3>
-            <p>Lege oben den ersten Auftrag an und weise danach Inventar und Personal direkt im Event zu.</p>
+            <h3>Keine aktiven Events</h3>
+            <p>Lege oben den nächsten Auftrag an oder prüfe das Archiv für abgeschlossene und abgesagte Jobs.</p>
           </div>
         {% endfor %}
       </div>
+
+      <section id="archive" class="archive-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Historie</p>
+            <h2>Job-Archiv</h2>
+          </div>
+        </div>
+        <div class="event-list archive-list">
+          {% for event in archive_events %}
+            {{ event_card(event, archived=true) }}
+          {% else %}
+            <div class="empty-panel">
+              <h3>Noch keine archivierten Jobs</h3>
+              <p>Abgeschlossene, abgesagte oder vergangene Events erscheinen hier.</p>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
     </section>
 
     <aside class="secondary-flow">

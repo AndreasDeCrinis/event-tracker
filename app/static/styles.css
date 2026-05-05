@@ -281,6 +281,12 @@ select:focus {
   gap: 14px;
 }
 
+.archive-section {
+  display: grid;
+  gap: 14px;
+  margin-top: 4px;
+}
+
 .event-card {
   padding: 18px;
   border-left: 5px solid var(--teal);
@@ -292,6 +298,10 @@ select:focus {
 
 .event-card.status-cancelled {
   border-left-color: var(--red);
+}
+
+.archived-card {
+  background: #fdfdfb;
 }
 
 .event-card-header,

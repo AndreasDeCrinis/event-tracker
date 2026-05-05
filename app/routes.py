@@ -43,7 +43,7 @@ MATERIAL_KIND_LABELS = {
 @bp.get("/")
 def index():
     moment = datetime.now()
-    today_start = datetime.combine(moment.date(), time.min)
+    today_start = _today_start()
     events = Event.query.order_by(Event.starts_at.asc(), Event.name.asc()).all()
     materials = Material.query.order_by(Material.name.asc()).all()
     people = Personnel.query.order_by(Personnel.name.asc()).all()
@@ -249,8 +249,8 @@ def assign_material(event_id):
     if quantity is None:
         return _redirect("event-" + str(event.id))
 
-    if event.status != STATUS_PLANNED:
-        flash("Material kann nur geplanten Events zugewiesen werden.", "error")
+    if not _event_is_open_for_assignment(event):
+        flash("Material kann nur aktiven geplanten Events zugewiesen werden.", "error")
         return _redirect("event-" + str(event.id))
 
     assignable = material_assignable_quantity(material, event)
@@ -275,6 +275,11 @@ def remove_material_assignment(assignment_id):
     assignment = EventMaterial.query.get_or_404(assignment_id)
     event_id = assignment.event_id
     material_name = assignment.material.name
+
+    if not _event_is_open_for_assignment(assignment.event):
+        flash("Archivierte Zuweisungen bleiben unverändert.", "error")
+        return _redirect("event-" + str(event_id))
+
     db.session.delete(assignment)
     db.session.commit()
     flash(f"Zuweisung von {material_name} wurde entfernt.", "success")
@@ -286,8 +291,8 @@ def assign_personnel(event_id):
     event = Event.query.get_or_404(event_id)
     person = Personnel.query.get_or_404(request.form.get("personnel_id", type=int))
 
-    if event.status != STATUS_PLANNED:
-        flash("Personal kann nur geplanten Events zugewiesen werden.", "error")
+    if not _event_is_open_for_assignment(event):
+        flash("Personal kann nur aktiven geplanten Events zugewiesen werden.", "error")
         return _redirect("event-" + str(event.id))
 
     existing = EventPersonnel.query.filter_by(event_id=event.id, personnel_id=person.id).first()
@@ -310,6 +315,11 @@ def remove_personnel_assignment(assignment_id):
     assignment = EventPersonnel.query.get_or_404(assignment_id)
     event_id = assignment.event_id
     person_name = assignment.personnel.name
+
+    if not _event_is_open_for_assignment(assignment.event):
+        flash("Archivierte Zuweisungen bleiben unverändert.", "error")
+        return _redirect("event-" + str(event_id))
+
     db.session.delete(assignment)
     db.session.commit()
     flash(f"Zuweisung von {person_name} wurde entfernt.", "success")
@@ -333,6 +343,14 @@ def _event_is_archived(event, today_start):
     return event.status in (STATUS_COMPLETED, STATUS_CANCELLED) or (
         event.status == STATUS_PLANNED and event.ends_at <= today_start
     )
+
+
+def _event_is_open_for_assignment(event):
+    return event.status == STATUS_PLANNED and not _event_is_archived(event, _today_start())
+
+
+def _today_start():
+    return datetime.combine(datetime.now().date(), time.min)
 
 
 def _required_text(field, label):
