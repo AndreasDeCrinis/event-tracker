@@ -87,12 +87,12 @@ def _migrate_database():
     if "event" not in inspector.get_table_names():
         return
 
-    event_columns = {column["name"] for column in inspector.get_columns("event")}
+    event_columns = {column["name"]: column for column in inspector.get_columns("event")}
 
-    if "duration_hours" in event_columns:
-        _rebuild_event_table_without_duration(event_columns)
+    if _event_table_needs_rebuild(event_columns):
+        _rebuild_event_table(event_columns)
         inspector = inspect(db.engine)
-        event_columns = {column["name"] for column in inspector.get_columns("event")}
+        event_columns = {column["name"]: column for column in inspector.get_columns("event")}
 
     if "booking_status" not in event_columns:
         db.session.execute(
@@ -101,10 +101,17 @@ def _migrate_database():
         db.session.commit()
 
 
-def _rebuild_event_table_without_duration(event_columns):
-    ends_at_expression = "datetime(starts_at, '+' || COALESCE(duration_hours, 1.0) || ' hours')"
-    if "ends_at" in event_columns:
-        ends_at_expression = f"COALESCE(ends_at, {ends_at_expression})"
+def _event_table_needs_rebuild(event_columns):
+    return "duration_hours" in event_columns or not event_columns["location"].get("nullable", True)
+
+
+def _rebuild_event_table(event_columns):
+    ends_at_expression = "ends_at"
+    if "duration_hours" in event_columns:
+        fallback_ends_at = "datetime(starts_at, '+' || COALESCE(duration_hours, 1.0) || ' hours')"
+        ends_at_expression = f"COALESCE(ends_at, {fallback_ends_at})" if "ends_at" in event_columns else fallback_ends_at
+
+    booking_status_expression = "booking_status" if "booking_status" in event_columns else "'fixed'"
 
     connection = db.engine.connect()
     try:
@@ -122,7 +129,7 @@ def _rebuild_event_table_without_duration(event_columns):
                         name VARCHAR(120) NOT NULL,
                         starts_at DATETIME NOT NULL,
                         ends_at DATETIME NOT NULL,
-                        location VARCHAR(160) NOT NULL,
+                        location VARCHAR(160),
                         status VARCHAR(20) NOT NULL,
                         booking_status VARCHAR(20) NOT NULL DEFAULT 'fixed',
                         notes TEXT,
@@ -138,7 +145,7 @@ def _rebuild_event_table_without_duration(event_columns):
                 text(
                     f"""
                     INSERT INTO event_new (id, name, starts_at, ends_at, location, status, booking_status, notes)
-                    SELECT id, name, starts_at, {ends_at_expression}, location, status, 'fixed', notes
+                    SELECT id, name, starts_at, {ends_at_expression}, NULLIF(location, ''), status, {booking_status_expression}, notes
                     FROM event
                     """
                 )

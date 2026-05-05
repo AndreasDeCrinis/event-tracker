@@ -24,7 +24,7 @@ class Event(db.Model):
     name = db.Column(db.String(120), nullable=False)
     starts_at = db.Column(db.DateTime, nullable=False, index=True)
     ends_at = db.Column(db.DateTime, nullable=False, index=True)
-    location = db.Column(db.String(160), nullable=False)
+    location = db.Column(db.String(160), nullable=True)
     status = db.Column(db.String(20), nullable=False, default=STATUS_PLANNED, index=True)
     booking_status = db.Column(db.String(20), nullable=False, default=BOOKING_PLANNING, index=True)
     notes = db.Column(db.Text, nullable=True)

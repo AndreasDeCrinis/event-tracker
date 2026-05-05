@@ -34,7 +34,9 @@
           </div>
           <div class="meta-row">
             <span>{{ event.starts_on | date_only }} bis {{ event.ends_on | date_only }}</span>
-            <span>{{ event.location }}</span>
+            {% if event.location %}
+              <span>{{ event.location }}</span>
+            {% endif %}
           </div>
         </div>
         <div class="event-actions">
@@ -91,11 +93,18 @@
               {% for assignment in event.material_assignments %}
                 <li>
                   <span>{{ assignment.material.name }}</span>
-                  <strong>{{ assignment.quantity }} {{ assignment.material.unit }}</strong>
                   {% if can_assign %}
+                    <form class="quantity-form" method="post" action="{{ url_for('main.update_material_assignment_quantity', assignment_id=assignment.id) }}">
+                      <label class="sr-only" for="material-quantity-{{ assignment.id }}">Menge</label>
+                      <input id="material-quantity-{{ assignment.id }}" type="number" name="quantity" min="1" step="1" value="{{ assignment.quantity }}" required>
+                      <span>{{ assignment.material.unit }}</span>
+                      <button type="submit">Speichern</button>
+                    </form>
                     <form method="post" action="{{ url_for('main.remove_material_assignment', assignment_id=assignment.id) }}">
                       <button class="ghost-button" type="submit" aria-label="{{ assignment.material.name }} entfernen">Entfernen</button>
                     </form>
+                  {% else %}
+                    <strong>{{ assignment.quantity }} {{ assignment.material.unit }}</strong>
                   {% endif %}
                 </li>
               {% endfor %}
@@ -192,7 +201,7 @@
           </label>
           <label>
             <span>Ort</span>
-            <input name="location" placeholder="Halle 3" required>
+            <input name="location" placeholder="Optional">
           </label>
           <label>
             <span>Planungsstatus</span>
@@ -292,7 +301,14 @@
                     <strong>{{ row.item.name }}</strong>
                     <span class="subtle">{{ material_kind_labels[row.item.kind] }}</span>
                   </td>
-                  <td>{{ row.item.total_quantity }} {{ row.item.unit }}</td>
+                  <td>
+                    <form class="quantity-form" method="post" action="{{ url_for('main.update_material_quantity', material_id=row.item.id) }}">
+                      <label class="sr-only" for="material-total-{{ row.item.id }}">Gesamtmenge</label>
+                      <input id="material-total-{{ row.item.id }}" type="number" name="total_quantity" min="0" step="1" value="{{ row.item.total_quantity }}" required>
+                      <span>{{ row.item.unit }}</span>
+                      <button type="submit">Speichern</button>
+                    </form>
+                  </td>
                   <td>{{ row.allocated }}</td>
                   <td>
                     <span class="availability {% if row.available == 0 and row.item.total_quantity > 0 %}empty{% endif %}">

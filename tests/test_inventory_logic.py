@@ -334,3 +334,117 @@ def test_planning_event_without_shortage_can_be_fixed_and_books_inventory(app):
         material = db.session.get(Material, material_id)
         assert event.booking_status == BOOKING_FIXED
         assert material_available_quantity(material, target_event=event) == 1
+
+
+def test_event_location_is_optional(app):
+    response = app.test_client().post(
+        "/events",
+        data={
+            "name": "Location optional",
+            "starts_on": "2999-06-01",
+            "ends_on": "2999-06-01",
+            "booking_status": BOOKING_PLANNING,
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = Event.query.filter_by(name="Location optional").one()
+        assert event.location is None
+
+
+def test_material_total_quantity_can_be_updated(app):
+    with app.app_context():
+        material = Material(name="Editable total", kind=MATERIAL_FIXED, total_quantity=2, unit="pcs")
+        db.session.add(material)
+        db.session.commit()
+        material_id = material.id
+
+    response = app.test_client().post(
+        f"/materials/{material_id}/quantity",
+        data={"total_quantity": 8},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Material, material_id).total_quantity == 8
+
+
+def test_fixed_event_material_assignment_quantity_can_be_updated_when_available(app):
+    with app.app_context():
+        material = Material(name="Editable assignment", kind=MATERIAL_FIXED, total_quantity=5, unit="pcs")
+        event = make_event("Editable fixed event", date(2999, 7, 1), date(2999, 7, 1))
+        db.session.add_all([material, event])
+        db.session.flush()
+        assignment = EventMaterial(event=event, material=material, quantity=2)
+        db.session.add(assignment)
+        db.session.commit()
+        assignment_id = assignment.id
+        material_id = material.id
+        event_id = event.id
+
+    response = app.test_client().post(
+        f"/assignments/material/{assignment_id}/quantity",
+        data={"quantity": 4},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        assignment = db.session.get(EventMaterial, assignment_id)
+        material = db.session.get(Material, material_id)
+        event = db.session.get(Event, event_id)
+        assert assignment.quantity == 4
+        assert material_available_quantity(material, target_event=event) == 1
+
+
+def test_fixed_event_material_assignment_quantity_rejects_overbooking(app):
+    with app.app_context():
+        material = Material(name="Rejected assignment edit", kind=MATERIAL_FIXED, total_quantity=3, unit="pcs")
+        event = make_event("Rejected fixed event", date(2999, 8, 1), date(2999, 8, 1))
+        db.session.add_all([material, event])
+        db.session.flush()
+        assignment = EventMaterial(event=event, material=material, quantity=2)
+        db.session.add(assignment)
+        db.session.commit()
+        assignment_id = assignment.id
+
+    response = app.test_client().post(
+        f"/assignments/material/{assignment_id}/quantity",
+        data={"quantity": 4},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(EventMaterial, assignment_id).quantity == 2
+
+
+def test_planning_event_material_assignment_quantity_can_exceed_inventory(app):
+    with app.app_context():
+        material = Material(name="Editable planning assignment", kind=MATERIAL_FIXED, total_quantity=2, unit="pcs")
+        event = make_event(
+            "Editable planning event",
+            date(2999, 9, 1),
+            date(2999, 9, 1),
+            booking_status=BOOKING_PLANNING,
+        )
+        db.session.add_all([material, event])
+        db.session.flush()
+        assignment = EventMaterial(event=event, material=material, quantity=1)
+        db.session.add(assignment)
+        db.session.commit()
+        assignment_id = assignment.id
+        material_id = material.id
+        event_id = event.id
+
+    response = app.test_client().post(
+        f"/assignments/material/{assignment_id}/quantity",
+        data={"quantity": 5},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        assignment = db.session.get(EventMaterial, assignment_id)
+        material = db.session.get(Material, material_id)
+        event = db.session.get(Event, event_id)
+        assert assignment.quantity == 5
+        assert material_shortage_quantity(material, event) == 3

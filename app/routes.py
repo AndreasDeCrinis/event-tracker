@@ -138,10 +138,10 @@ def create_event():
     name = _required_text("name", "Event-Name")
     starts_on_value = _required_text("starts_on", "Beginn")
     ends_on_value = _required_text("ends_on", "Ende")
-    location = _required_text("location", "Ort")
+    location = _optional_text("location")
     booking_status = request.form.get("booking_status", BOOKING_PLANNING)
 
-    if not all((name, starts_on_value, ends_on_value, location)):
+    if not all((name, starts_on_value, ends_on_value)):
         return _redirect("events")
 
     if booking_status not in EVENT_BOOKING_STATUSES:
@@ -258,6 +258,20 @@ def create_material():
     return _redirect("inventory")
 
 
+@bp.post("/materials/<int:material_id>/quantity")
+def update_material_quantity(material_id):
+    material = Material.query.get_or_404(material_id)
+    quantity = _non_negative_int("total_quantity", "Gesamtmenge")
+
+    if quantity is None:
+        return _redirect("inventory")
+
+    material.total_quantity = quantity
+    db.session.commit()
+    flash(f"Gesamtmenge von {material.name} wurde aktualisiert.", "success")
+    return _redirect("inventory")
+
+
 @bp.post("/materials/<int:material_id>/delete")
 def delete_material(material_id):
     material = Material.query.get_or_404(material_id)
@@ -327,6 +341,38 @@ def assign_material(event_id):
     db.session.commit()
     flash(f"{quantity} {material.unit} {material.name} wurden {event.name} zugewiesen.", "success")
     return _redirect("event-" + str(event.id))
+
+
+@bp.post("/assignments/material/<int:assignment_id>/quantity")
+def update_material_assignment_quantity(assignment_id):
+    assignment = EventMaterial.query.get_or_404(assignment_id)
+    quantity = _positive_int("quantity", "Menge")
+
+    if quantity is None:
+        return _redirect("event-" + str(assignment.event_id))
+
+    if not _event_is_open_for_assignment(assignment.event):
+        flash("Archivierte Zuweisungen bleiben unverändert.", "error")
+        return _redirect("event-" + str(assignment.event_id))
+
+    if assignment.event.booking_status == BOOKING_FIXED:
+        available_for_event = material_available_quantity(
+            assignment.material,
+            target_event=assignment.event,
+            exclude_event_id=assignment.event_id,
+        )
+        if quantity > available_for_event:
+            flash(
+                f"Von {assignment.material.name} sind für dieses Event nur noch "
+                f"{available_for_event} {assignment.material.unit} verfügbar.",
+                "error",
+            )
+            return _redirect("event-" + str(assignment.event_id))
+
+    assignment.quantity = quantity
+    db.session.commit()
+    flash(f"Menge von {assignment.material.name} wurde aktualisiert.", "success")
+    return _redirect("event-" + str(assignment.event_id))
 
 
 @bp.post("/assignments/material/<int:assignment_id>/delete")

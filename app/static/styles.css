@@ -320,6 +320,7 @@ select:focus {
 .inline-form,
 .event-actions,
 .assign-form,
+.quantity-form,
 .panel-heading {
   display: flex;
   align-items: center;
@@ -455,9 +456,35 @@ select:focus {
   gap: 8px;
 }
 
+.quantity-form {
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .assign-form input {
   width: 90px;
   flex: 0 0 auto;
+}
+
+.quantity-form input {
+  width: 76px;
+  min-height: 34px;
+  padding-block: 6px;
+}
+
+.quantity-form button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  min-height: 34px;
+  padding: 0 9px;
+  font-weight: 800;
+}
+
+.quantity-form button:hover {
+  border-color: var(--teal);
+  color: var(--teal-dark);
 }
 
 .ghost-button,
