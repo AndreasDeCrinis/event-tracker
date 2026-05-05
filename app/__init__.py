@@ -21,6 +21,9 @@ def create_app(config=None):
         PREFERRED_URL_SCHEME=os.environ.get("PREFERRED_URL_SCHEME", "http"),
         SESSION_COOKIE_SECURE=_env_bool("SESSION_COOKIE_SECURE", False),
         SESSION_COOKIE_SAMESITE="Lax",
+        GOOGLE_CLIENT_ID=os.environ.get("GOOGLE_CLIENT_ID"),
+        GOOGLE_CLIENT_SECRET=os.environ.get("GOOGLE_CLIENT_SECRET"),
+        GOOGLE_REDIRECT_URI=os.environ.get("GOOGLE_REDIRECT_URI"),
     )
 
     if config:
@@ -94,15 +97,38 @@ def _migrate_database():
         inspector = inspect(db.engine)
         event_columns = {column["name"]: column for column in inspector.get_columns("event")}
 
+    if "location" not in event_columns:
+        db.session.execute(text("ALTER TABLE event ADD COLUMN location VARCHAR(160)"))
+        db.session.commit()
+        event_columns["location"] = {"name": "location"}
+
     if "booking_status" not in event_columns:
         db.session.execute(
             text("ALTER TABLE event ADD COLUMN booking_status VARCHAR(20) NOT NULL DEFAULT 'fixed'")
         )
         db.session.commit()
+        event_columns["booking_status"] = {"name": "booking_status"}
+
+    google_event_columns = {
+        "google_event_id": "VARCHAR(255)",
+        "google_calendar_id": "VARCHAR(255)",
+        "google_event_link": "VARCHAR(500)",
+        "google_synced_at": "DATETIME",
+        "google_sync_error": "TEXT",
+    }
+    for column_name, column_type in google_event_columns.items():
+        if column_name not in event_columns:
+            db.session.execute(text(f"ALTER TABLE event ADD COLUMN {column_name} {column_type}"))
+            db.session.commit()
+
+    db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_event_google_event_id ON event (google_event_id)"))
+    db.session.commit()
 
 
 def _event_table_needs_rebuild(event_columns):
-    return "duration_hours" in event_columns or not event_columns["location"].get("nullable", True)
+    return "duration_hours" in event_columns or (
+        "location" in event_columns and not event_columns["location"].get("nullable", True)
+    )
 
 
 def _rebuild_event_table(event_columns):

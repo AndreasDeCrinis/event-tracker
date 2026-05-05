@@ -28,6 +28,11 @@ class Event(db.Model):
     status = db.Column(db.String(20), nullable=False, default=STATUS_PLANNED, index=True)
     booking_status = db.Column(db.String(20), nullable=False, default=BOOKING_PLANNING, index=True)
     notes = db.Column(db.Text, nullable=True)
+    google_event_id = db.Column(db.String(255), nullable=True, index=True)
+    google_calendar_id = db.Column(db.String(255), nullable=True)
+    google_event_link = db.Column(db.String(500), nullable=True)
+    google_synced_at = db.Column(db.DateTime, nullable=True)
+    google_sync_error = db.Column(db.Text, nullable=True)
 
     material_assignments = db.relationship(
         "EventMaterial",
@@ -108,6 +113,20 @@ class Personnel(db.Model):
         cascade="all, delete-orphan",
         order_by="EventPersonnel.id",
     )
+
+
+class GoogleCalendarConnection(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    calendar_id = db.Column(db.String(255), nullable=True)
+    credentials_json = db.Column(db.Text, nullable=True)
+    connected_at = db.Column(db.DateTime, nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
+    last_error = db.Column(db.Text, nullable=True)
+
+    @property
+    def is_connected(self):
+        return bool(self.credentials_json)
 
 
 class EventMaterial(db.Model):

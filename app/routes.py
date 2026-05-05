@@ -1,8 +1,19 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
+import secrets
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from . import db
+from .google_calendar import (
+    GoogleCalendarError,
+    build_authorization_url,
+    delete_event_from_google,
+    exchange_authorization_response,
+    google_oauth_is_configured,
+    google_redirect_uri,
+    sync_all_events_to_google,
+    sync_event_to_google,
+)
 from .models import (
     BOOKING_FIXED,
     BOOKING_PLANNING,
@@ -16,6 +27,7 @@ from .models import (
     Event,
     EventMaterial,
     EventPersonnel,
+    GoogleCalendarConnection,
     Material,
     Personnel,
     material_assignable_quantity,
@@ -29,6 +41,7 @@ from .models import (
 
 
 bp = Blueprint("main", __name__)
+GOOGLE_OAUTH_STATE_KEY = "google_calendar_oauth_state"
 
 EVENT_STATUS_LABELS = {
     STATUS_PLANNED: "Geplant",
@@ -130,6 +143,9 @@ def index():
         booking_planning=BOOKING_PLANNING,
         booking_fixed=BOOKING_FIXED,
         planned_status=STATUS_PLANNED,
+        google_calendar_connection=_google_calendar_connection(),
+        google_calendar_oauth_configured=google_oauth_is_configured(),
+        google_calendar_redirect_uri=google_redirect_uri(),
     )
 
 
@@ -169,6 +185,7 @@ def create_event():
     )
     db.session.add(event)
     db.session.commit()
+    _sync_event_if_google_connected(event)
     flash(f"{event.name} wurde hinzugefügt.", "success")
     return _redirect("events")
 
@@ -202,6 +219,7 @@ def set_event_booking_status(event_id):
 
     event.booking_status = booking_status
     db.session.commit()
+    _sync_event_if_google_connected(event)
     flash(f"{event.name} ist jetzt {EVENT_BOOKING_STATUS_LABELS[event.booking_status]}.", "success")
     return _redirect("event-" + str(event.id))
 
@@ -217,6 +235,7 @@ def close_event(event_id):
 
     event.status = status
     db.session.commit()
+    _sync_event_if_google_connected(event)
     flash(f"{event.name} wurde als {EVENT_STATUS_LABELS[event.status].lower()} markiert.", "success")
     return _redirect("event-" + str(event.id))
 
@@ -224,10 +243,112 @@ def close_event(event_id):
 @bp.post("/events/<int:event_id>/delete")
 def delete_event(event_id):
     event = Event.query.get_or_404(event_id)
+    _delete_event_from_google_if_connected(event)
     db.session.delete(event)
     db.session.commit()
     flash(f"{event.name} wurde entfernt.", "success")
     return _redirect("events")
+
+
+@bp.post("/google-calendar/settings")
+def update_google_calendar_settings():
+    calendar_id = _required_text("calendar_id", "Google Kalender-ID")
+
+    if not calendar_id:
+        return _redirect("google-calendar")
+
+    connection = _get_or_create_google_calendar_connection()
+    _set_google_calendar_id(connection, calendar_id)
+    db.session.commit()
+
+    if connection.is_connected:
+        _sync_all_google_events(connection)
+    else:
+        flash("Google Kalender-ID wurde gespeichert. Verbinde Google Kalender, um Events zu synchronisieren.", "success")
+
+    return _redirect("google-calendar")
+
+
+@bp.post("/google-calendar/connect")
+def connect_google_calendar():
+    calendar_id = _required_text("calendar_id", "Google Kalender-ID")
+
+    if not calendar_id:
+        return _redirect("google-calendar")
+
+    connection = _get_or_create_google_calendar_connection()
+    _set_google_calendar_id(connection, calendar_id)
+    db.session.commit()
+
+    state = secrets.token_urlsafe(32)
+    redirect_uri = google_redirect_uri()
+
+    try:
+        authorization_url, returned_state = build_authorization_url(state=state, redirect_uri=redirect_uri)
+    except GoogleCalendarError as error:
+        flash(str(error), "error")
+        return _redirect("google-calendar")
+
+    session[GOOGLE_OAUTH_STATE_KEY] = returned_state
+    return redirect(authorization_url)
+
+
+@bp.get("/google-calendar/oauth2callback")
+def google_calendar_callback():
+    expected_state = session.pop(GOOGLE_OAUTH_STATE_KEY, None)
+
+    if request.args.get("error"):
+        flash(f"Google Kalender wurde nicht verbunden: {request.args['error']}", "error")
+        return _redirect("google-calendar")
+
+    if not expected_state or request.args.get("state") != expected_state:
+        flash("Google Kalender konnte wegen eines ungültigen OAuth-Status nicht verbunden werden.", "error")
+        return _redirect("google-calendar")
+
+    connection = _get_or_create_google_calendar_connection()
+
+    try:
+        connection.credentials_json = exchange_authorization_response(
+            authorization_response=request.url,
+            state=expected_state,
+            redirect_uri=google_redirect_uri(),
+            existing_credentials_json=connection.credentials_json,
+        )
+    except GoogleCalendarError as error:
+        flash(str(error), "error")
+        return _redirect("google-calendar")
+
+    connection.connected_at = _utc_now()
+    connection.updated_at = _utc_now()
+    connection.last_error = None
+    db.session.commit()
+
+    _sync_all_google_events(connection)
+    return _redirect("google-calendar")
+
+
+@bp.post("/google-calendar/sync")
+def sync_google_calendar():
+    connection = _google_calendar_connection()
+    _sync_all_google_events(connection)
+    return _redirect("google-calendar")
+
+
+@bp.post("/google-calendar/disconnect")
+def disconnect_google_calendar():
+    connection = _google_calendar_connection()
+
+    if not connection:
+        flash("Google Kalender ist nicht verbunden.", "error")
+        return _redirect("google-calendar")
+
+    connection.credentials_json = None
+    connection.connected_at = None
+    connection.updated_at = _utc_now()
+    connection.last_error = None
+    db.session.commit()
+    flash("Google Kalender wurde getrennt. Bestehende Kalendereinträge bleiben erhalten.", "success")
+    return _redirect("google-calendar")
 
 
 @bp.post("/materials")
@@ -339,6 +460,7 @@ def assign_material(event_id):
         db.session.add(assignment)
 
     db.session.commit()
+    _sync_event_if_google_connected(event)
     flash(f"{quantity} {material.unit} {material.name} wurden {event.name} zugewiesen.", "success")
     return _redirect("event-" + str(event.id))
 
@@ -371,6 +493,7 @@ def update_material_assignment_quantity(assignment_id):
 
     assignment.quantity = quantity
     db.session.commit()
+    _sync_event_if_google_connected(assignment.event)
     flash(f"Menge von {assignment.material.name} wurde aktualisiert.", "success")
     return _redirect("event-" + str(assignment.event_id))
 
@@ -378,6 +501,7 @@ def update_material_assignment_quantity(assignment_id):
 @bp.post("/assignments/material/<int:assignment_id>/delete")
 def remove_material_assignment(assignment_id):
     assignment = EventMaterial.query.get_or_404(assignment_id)
+    event = assignment.event
     event_id = assignment.event_id
     material_name = assignment.material.name
 
@@ -387,6 +511,8 @@ def remove_material_assignment(assignment_id):
 
     db.session.delete(assignment)
     db.session.commit()
+    db.session.expire(event, ["material_assignments"])
+    _sync_event_if_google_connected(event)
     flash(f"Zuweisung von {material_name} wurde entfernt.", "success")
     return _redirect("event-" + str(event_id))
 
@@ -411,6 +537,7 @@ def assign_personnel(event_id):
 
     db.session.add(EventPersonnel(event=event, personnel=person))
     db.session.commit()
+    _sync_event_if_google_connected(event)
     flash(f"{person.name} wurde {event.name} zugewiesen.", "success")
     return _redirect("event-" + str(event.id))
 
@@ -418,6 +545,7 @@ def assign_personnel(event_id):
 @bp.post("/assignments/personnel/<int:assignment_id>/delete")
 def remove_personnel_assignment(assignment_id):
     assignment = EventPersonnel.query.get_or_404(assignment_id)
+    event = assignment.event
     event_id = assignment.event_id
     person_name = assignment.personnel.name
 
@@ -427,6 +555,8 @@ def remove_personnel_assignment(assignment_id):
 
     db.session.delete(assignment)
     db.session.commit()
+    db.session.expire(event, ["personnel_assignments"])
+    _sync_event_if_google_connected(event)
     flash(f"Zuweisung von {person_name} wurde entfernt.", "success")
     return _redirect("event-" + str(event_id))
 
@@ -454,8 +584,101 @@ def _event_is_open_for_assignment(event):
     return event.status == STATUS_PLANNED and not _event_is_archived(event, _today_start())
 
 
+def _google_calendar_connection():
+    return db.session.get(GoogleCalendarConnection, 1)
+
+
+def _get_or_create_google_calendar_connection():
+    connection = _google_calendar_connection()
+
+    if not connection:
+        connection = GoogleCalendarConnection(id=1)
+        db.session.add(connection)
+
+    return connection
+
+
+def _set_google_calendar_id(connection, calendar_id):
+    previous_calendar_id = connection.calendar_id
+    connection.calendar_id = calendar_id
+    connection.updated_at = _utc_now()
+
+    if previous_calendar_id and previous_calendar_id != calendar_id:
+        _clear_google_event_links(previous_calendar_id)
+
+
+def _clear_google_event_links(calendar_id):
+    for event in Event.query.filter_by(google_calendar_id=calendar_id).all():
+        event.google_event_id = None
+        event.google_calendar_id = None
+        event.google_event_link = None
+        event.google_synced_at = None
+        event.google_sync_error = None
+
+
+def _sync_event_if_google_connected(event):
+    connection = _google_calendar_connection()
+
+    if not connection or not connection.calendar_id or not connection.is_connected:
+        return
+
+    try:
+        sync_event_to_google(event, connection)
+    except GoogleCalendarError as error:
+        event.google_sync_error = str(error)
+        connection.last_error = str(error)
+        db.session.commit()
+        flash(f"Google Kalender konnte nicht synchronisiert werden: {error}", "error")
+        return
+
+    connection.last_synced_at = _utc_now()
+    connection.last_error = None
+    db.session.commit()
+
+
+def _delete_event_from_google_if_connected(event):
+    connection = _google_calendar_connection()
+
+    if not connection or not connection.calendar_id or not connection.is_connected or not event.google_event_id:
+        return
+
+    try:
+        delete_event_from_google(event, connection)
+    except GoogleCalendarError as error:
+        connection.last_error = str(error)
+        flash(f"Google Kalender konnte nicht bereinigt werden: {error}", "error")
+
+
+def _sync_all_google_events(connection):
+    if not connection or not connection.calendar_id:
+        flash("Bitte zuerst eine Google Kalender-ID speichern.", "error")
+        return
+
+    if not connection.is_connected:
+        flash("Bitte zuerst Google Kalender verbinden.", "error")
+        return
+
+    try:
+        result = sync_all_events_to_google(connection, Event.query.order_by(Event.starts_at.asc()).all())
+    except GoogleCalendarError as error:
+        connection.last_error = str(error)
+        db.session.commit()
+        flash(f"Google Kalender konnte nicht synchronisiert werden: {error}", "error")
+        return
+
+    db.session.commit()
+    if result["failed"]:
+        flash(f"{result['synced']} Events synchronisiert, {result['failed']} fehlgeschlagen.", "error")
+    else:
+        flash(f"{result['synced']} Events wurden mit Google Kalender synchronisiert.", "success")
+
+
 def _today_start():
     return datetime.combine(datetime.now().date(), time.min)
+
+
+def _utc_now():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _material_shortage_warnings(event):

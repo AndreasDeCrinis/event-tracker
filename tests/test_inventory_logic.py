@@ -14,6 +14,7 @@ from app.models import (
     Event,
     EventMaterial,
     EventPersonnel,
+    GoogleCalendarConnection,
     Material,
     Personnel,
     material_assignable_quantity,
@@ -22,6 +23,7 @@ from app.models import (
     personnel_has_conflict,
     personnel_is_available,
 )
+from app.google_calendar import google_event_body, sync_event_to_google
 
 
 def make_event(name, starts_on, ends_on, location="Hall", booking_status=BOOKING_FIXED):
@@ -448,3 +450,92 @@ def test_planning_event_material_assignment_quantity_can_exceed_inventory(app):
         event = db.session.get(Event, event_id)
         assert assignment.quantity == 5
         assert material_shortage_quantity(material, event) == 3
+
+
+def test_google_calendar_section_renders_connect_button(app):
+    html = app.test_client().get("/").data.decode()
+
+    assert "Google Kalender verbinden" in html
+    assert "Kalender-ID" in html
+    assert "/google-calendar/connect" in html
+
+
+def test_google_calendar_calendar_id_can_be_saved(app):
+    response = app.test_client().post(
+        "/google-calendar/settings",
+        data={"calendar_id": "events@example.com"},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        connection = db.session.get(GoogleCalendarConnection, 1)
+        assert connection.calendar_id == "events@example.com"
+
+
+def test_google_calendar_event_body_uses_event_date_range_and_assignments(app):
+    with app.app_context():
+        material = Material(name="Stage lights", kind=MATERIAL_FIXED, total_quantity=6, unit="pcs")
+        person = Personnel(name="Alex Morgan", role="Tech")
+        event = make_event(
+            "Calendar show",
+            date(2999, 10, 1),
+            date(2999, 10, 3),
+            location=None,
+            booking_status=BOOKING_FIXED,
+        )
+        event.notes = "Bring checklist."
+        db.session.add_all([material, person, event])
+        db.session.flush()
+        db.session.add_all(
+            [
+                EventMaterial(event=event, material=material, quantity=2),
+                EventPersonnel(event=event, personnel=person),
+            ]
+        )
+        db.session.commit()
+
+        body = google_event_body(event)
+
+    assert body["summary"] == "Calendar show"
+    assert body["location"] == ""
+    assert body["start"] == {"date": "2999-10-01"}
+    assert body["end"] == {"date": "2999-10-04"}
+    assert "Stage lights: 2 pcs" in body["description"]
+    assert "Alex Morgan (Tech)" in body["description"]
+
+
+def test_google_calendar_sync_creates_google_event_with_configured_calendar(app):
+    with app.app_context():
+        event = make_event("Sync show", date(2999, 11, 1), date(2999, 11, 1))
+        connection = GoogleCalendarConnection(id=1, calendar_id="calendar@example.com", credentials_json="{}")
+        service = FakeCalendarService()
+        db.session.add_all([event, connection])
+        db.session.commit()
+
+        synced = sync_event_to_google(event, connection, service=service)
+
+        assert synced["id"] == "google-event-1"
+        assert event.google_event_id == "google-event-1"
+        assert event.google_calendar_id == "calendar@example.com"
+        assert service.inserted["calendarId"] == "calendar@example.com"
+        assert service.inserted["body"]["summary"] == "Sync show"
+
+
+class FakeCalendarService:
+    def __init__(self):
+        self.inserted = None
+
+    def events(self):
+        return self
+
+    def insert(self, calendarId, body):
+        self.inserted = {"calendarId": calendarId, "body": body}
+        return FakeGoogleRequest({"id": "google-event-1", "htmlLink": "https://calendar.google.com/event"})
+
+
+class FakeGoogleRequest:
+    def __init__(self, response):
+        self.response = response
+
+    def execute(self):
+        return self.response

@@ -10,6 +10,9 @@ services:
       PREFERRED_URL_SCHEME: https
       TRUSTED_PROXY_COUNT: "1"
       SESSION_COOKIE_SECURE: "1"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
     volumes:
       - event_job_data:/data
       - .:/app

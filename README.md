@@ -70,6 +70,44 @@ proxy_set_header X-Forwarded-Port $server_port;
 
 For direct local HTTP access without a proxy, set `TRUSTED_PROXY_COUNT=0` and `SESSION_COOKIE_SECURE=0`.
 
+## Google Calendar Sync
+
+The app can connect to Google Calendar with OAuth and sync every Event to one calendar ID entered in the UI.
+
+Google Cloud setup:
+
+1. Create or choose a Google Cloud project.
+2. Enable the Google Calendar API.
+3. Configure an OAuth consent screen.
+4. Create an OAuth Client ID of type `Web application`.
+5. Add this authorized redirect URI:
+
+```text
+https://foo.decrinis.com/google-calendar/oauth2callback
+```
+
+Container environment:
+
+```yaml
+GOOGLE_CLIENT_ID: your-client-id
+GOOGLE_CLIENT_SECRET: your-client-secret
+```
+
+Optional override if your public URL differs from the generated reverse-proxy URL:
+
+```yaml
+GOOGLE_REDIRECT_URI: https://foo.decrinis.com/google-calendar/oauth2callback
+```
+
+In the app, open `Kalender`, enter the calendar ID, then click `Google Kalender verbinden`.
+The calendar ID can be `primary` or the ID shown in Google Calendar settings under "Integrate calendar".
+
+The app requests the narrow Calendar events scope:
+
+```text
+https://www.googleapis.com/auth/calendar.events
+```
+
 ## Inventory Logic
 
 - Events can be `In Planung` or `Fixiert`.

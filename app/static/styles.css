@@ -527,6 +527,39 @@ select:focus {
   gap: 10px;
 }
 
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.split-actions {
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.integration-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.helper-text {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.error-text {
+  color: var(--red);
+}
+
 .table-wrap {
   overflow-x: auto;
   margin-top: 16px;
