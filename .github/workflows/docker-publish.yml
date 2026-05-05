@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: adecrinis/event-job-tracker
+  IMAGE_NAME: adcrinis/event-job-tracker
 
 jobs:
   release:
