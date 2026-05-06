@@ -101,8 +101,14 @@ def index():
     event_templates = EventTemplate.query.order_by(EventTemplate.name.asc()).all()
     materials = Material.query.order_by(Material.name.asc()).all()
     people = Personnel.query.order_by(Personnel.name.asc()).all()
-    active_events = [event for event in events if not _event_is_archived(event, moment)]
-    archive_events = [event for event in events if _event_is_archived(event, moment)]
+    active_events = _events_by_start_proximity(
+        [event for event in events if not _event_is_archived(event, moment)],
+        moment,
+    )
+    archive_events = _events_by_start_proximity(
+        [event for event in events if _event_is_archived(event, moment)],
+        moment,
+    )
     personnel_rows = [
         {
             "person": person,
@@ -1091,6 +1097,18 @@ def _month_key(year, month):
 def _event_is_archived(event, moment):
     return event.status in (STATUS_COMPLETED, STATUS_CANCELLED) or (
         event.status == STATUS_PLANNED and event.ends_at <= moment
+    )
+
+
+def _events_by_start_proximity(events, moment):
+    today = moment.date()
+    return sorted(
+        events,
+        key=lambda event: (
+            abs((event.starts_on - today).days),
+            event.starts_at,
+            event.name.lower(),
+        ),
     )
 
 

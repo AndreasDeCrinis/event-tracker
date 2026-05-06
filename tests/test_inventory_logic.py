@@ -673,6 +673,20 @@ def test_event_list_view_is_default(app):
     assert 'class="calendar-panel"' not in html
 
 
+def test_event_list_orders_events_by_start_date_closest_to_today(app):
+    today = datetime.now().date()
+
+    with app.app_context():
+        farther = make_event("Farther active event", today + timedelta(days=20), today + timedelta(days=20))
+        closer = make_event("Closer active event", today + timedelta(days=2), today + timedelta(days=2))
+        db.session.add_all([farther, closer])
+        db.session.commit()
+
+    html = app.test_client().get("/").data.decode()
+
+    assert html.index("Closer active event") < html.index("Farther active event")
+
+
 def test_event_calendar_view_renders_month_grid_and_event_links(app):
     with app.app_context():
         event = make_event("Calendar party", date(2999, 1, 10), date(2999, 1, 12))
