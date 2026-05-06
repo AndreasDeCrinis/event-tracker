@@ -28,8 +28,18 @@ _worker_wakeup = threading.Event()
 def queue_google_event_sync(event, connection=None):
     with db.session.no_autoflush:
         connection = connection or _google_calendar_connection()
+
+        if event.sync_to_google_calendar is False:
+            return queue_google_event_deletion(event, connection=connection)
+
         if not _connection_can_sync(connection):
             return False
+
+        GoogleCalendarSyncJob.query.filter_by(
+            action=GOOGLE_SYNC_ACTION_DELETE,
+            event_id=event.id,
+            status=GOOGLE_SYNC_STATUS_PENDING,
+        ).delete()
 
         run_after = _delayed_run_after()
         existing = GoogleCalendarSyncJob.query.filter_by(
@@ -63,18 +73,33 @@ def queue_google_event_sync(event, connection=None):
 
 def queue_google_event_deletion(event, connection=None):
     with db.session.no_autoflush:
-        connection = connection or _google_calendar_connection()
-        if not _connection_can_sync(connection):
-            return False
-
         GoogleCalendarSyncJob.query.filter_by(
             action=GOOGLE_SYNC_ACTION_UPSERT,
             event_id=event.id,
             status=GOOGLE_SYNC_STATUS_PENDING,
         ).delete()
 
+        connection = connection or _google_calendar_connection()
+        if not _connection_can_sync(connection):
+            return False
+
         if not event.google_event_id:
             return False
+
+        existing = GoogleCalendarSyncJob.query.filter_by(
+            action=GOOGLE_SYNC_ACTION_DELETE,
+            event_id=event.id,
+            status=GOOGLE_SYNC_STATUS_PENDING,
+        ).first()
+
+        if existing:
+            existing.google_event_id = event.google_event_id
+            existing.google_calendar_id = event.google_calendar_id or connection.calendar_id
+            existing.event_name = event.name
+            existing.last_error = None
+            existing.run_after = _delayed_run_after()
+            existing.updated_at = _utc_now()
+            return True
 
         db.session.add(
             GoogleCalendarSyncJob(
@@ -176,10 +201,15 @@ def _process_upsert_job(job, connection):
     if not event:
         return
 
+    if event.sync_to_google_calendar is False:
+        delete_event_from_google(event, connection)
+        return
+
     sync_event_to_google(event, connection)
 
 
 def _process_delete_job(job, connection):
+    event = db.session.get(Event, job.event_id) if job.event_id else None
     event_snapshot = SimpleNamespace(
         name=job.event_name or "Event",
         google_event_id=job.google_event_id,
@@ -189,6 +219,13 @@ def _process_delete_job(job, connection):
         google_sync_error=None,
     )
     delete_event_from_google(event_snapshot, connection)
+
+    if event and event.google_event_id == job.google_event_id:
+        event.google_event_id = None
+        event.google_calendar_id = None
+        event.google_event_link = None
+        event.google_synced_at = None
+        event.google_sync_error = None
 
 
 def _mark_job_failed(job, connection, error):

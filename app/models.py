@@ -46,6 +46,7 @@ class Event(db.Model):
     google_event_link = db.Column(db.String(500), nullable=True)
     google_synced_at = db.Column(db.DateTime, nullable=True)
     google_sync_error = db.Column(db.Text, nullable=True)
+    sync_to_google_calendar = db.Column(db.Boolean, nullable=False, default=True)
     consumables_deducted_at = db.Column(db.DateTime, nullable=True)
 
     material_assignments = db.relationship(

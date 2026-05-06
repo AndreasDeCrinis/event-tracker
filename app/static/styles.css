@@ -387,6 +387,25 @@ select:focus {
   border-color: var(--teal);
 }
 
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  accent-color: var(--teal);
+}
+
+.checkbox-label span {
+  overflow-wrap: anywhere;
+}
+
 .primary-button,
 .inline-form button,
 .assign-form button {
@@ -694,6 +713,11 @@ details[open] > .collapsible-summary .collapse-indicator::before {
 
 .inline-form {
   gap: 8px;
+}
+
+.checkbox-form {
+  align-items: center;
+  justify-content: flex-start;
 }
 
 .event-actions {

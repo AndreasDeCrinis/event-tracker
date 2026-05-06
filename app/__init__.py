@@ -149,6 +149,11 @@ def _migrate_database():
             db.session.commit()
             event_columns[column_name] = {"name": column_name}
 
+    if "sync_to_google_calendar" not in event_columns:
+        db.session.execute(text("ALTER TABLE event ADD COLUMN sync_to_google_calendar BOOLEAN NOT NULL DEFAULT 1"))
+        db.session.commit()
+        event_columns["sync_to_google_calendar"] = {"name": "sync_to_google_calendar"}
+
     if "consumables_deducted_at" not in event_columns:
         db.session.execute(text("ALTER TABLE event ADD COLUMN consumables_deducted_at DATETIME"))
         db.session.commit()

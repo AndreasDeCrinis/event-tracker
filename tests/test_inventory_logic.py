@@ -8,6 +8,7 @@ from app import routes as routes_module
 from app.models import (
     BOOKING_FIXED,
     BOOKING_PLANNING,
+    GOOGLE_SYNC_ACTION_DELETE,
     GOOGLE_SYNC_ACTION_UPSERT,
     GOOGLE_SYNC_STATUS_PENDING,
     MATERIAL_CONSUMABLE,
@@ -641,6 +642,8 @@ def test_event_list_view_is_default(app):
     assert 'class="event-list"' in html
     assert '<details id="event-' in html
     assert f'data-collapse-state-key="event:{event_id}"' in html
+    assert f'action="/events/{event_id}/calendar-sync"' in html
+    assert "Mit Google Kalender synchronisieren" in html
     assert 'src="/static/collapsible-state.js"' in html
     assert 'class="event-card status-planned " open>' not in html
     assert 'class="event-card-header collapsible-summary"' in html
@@ -894,9 +897,58 @@ def test_event_save_queues_google_sync_without_calling_google(app, monkeypatch):
     with app.app_context():
         event = Event.query.filter_by(name="Queued show").one()
         job = GoogleCalendarSyncJob.query.one()
+        assert event.sync_to_google_calendar is True
         assert job.action == GOOGLE_SYNC_ACTION_UPSERT
         assert job.status == GOOGLE_SYNC_STATUS_PENDING
         assert job.event_id == event.id
+
+
+def test_event_can_be_created_without_google_calendar_sync(app):
+    with app.app_context():
+        db.session.add(GoogleCalendarConnection(id=1, calendar_id="calendar@example.com", credentials_json="{}"))
+        db.session.commit()
+
+    response = app.test_client().post(
+        "/events",
+        data={
+            "name": "Private show",
+            "starts_on": "2999-12-03",
+            "ends_on": "2999-12-03",
+            "booking_status": BOOKING_FIXED,
+            "sync_to_google_calendar": "0",
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = Event.query.filter_by(name="Private show").one()
+        assert event.sync_to_google_calendar is False
+        assert GoogleCalendarSyncJob.query.count() == 0
+
+
+def test_event_calendar_sync_can_be_disabled_and_queues_google_delete(app):
+    with app.app_context():
+        connection = GoogleCalendarConnection(id=1, calendar_id="calendar@example.com", credentials_json="{}")
+        event = make_event("Unsynced later", date(2999, 12, 4), date(2999, 12, 4))
+        event.google_event_id = "google-event-old"
+        event.google_calendar_id = "calendar@example.com"
+        db.session.add_all([connection, event])
+        db.session.commit()
+        event_id = event.id
+
+    response = app.test_client().post(
+        f"/events/{event_id}/calendar-sync",
+        data={"sync_to_google_calendar": "0"},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = db.session.get(Event, event_id)
+        job = GoogleCalendarSyncJob.query.one()
+        assert event.sync_to_google_calendar is False
+        assert job.action == GOOGLE_SYNC_ACTION_DELETE
+        assert job.event_id == event.id
+        assert job.google_event_id == "google-event-old"
 
 
 def test_google_sync_queue_does_not_autoflush_pending_event_changes(app):
@@ -952,6 +1004,47 @@ def test_google_calendar_queue_worker_processes_pending_event_sync(app, monkeypa
         assert GoogleCalendarSyncJob.query.count() == 0
         assert event.google_event_id == "google-event-queued"
         assert db.session.get(GoogleCalendarConnection, 1).last_error is None
+
+
+def test_google_calendar_queue_worker_clears_event_link_after_sync_is_disabled(app, monkeypatch):
+    def fake_delete_event_from_google(event, connection):
+        event.google_event_id = None
+        event.google_calendar_id = None
+        event.google_event_link = None
+        event.google_synced_at = None
+        event.google_sync_error = None
+
+    monkeypatch.setattr("app.google_calendar_queue.delete_event_from_google", fake_delete_event_from_google)
+
+    with app.app_context():
+        connection = GoogleCalendarConnection(id=1, calendar_id="calendar@example.com", credentials_json="{}")
+        event = make_event("Delete queued show", date(2999, 12, 5), date(2999, 12, 5))
+        event.sync_to_google_calendar = False
+        event.google_event_id = "google-event-delete"
+        event.google_calendar_id = "calendar@example.com"
+        event.google_event_link = "https://calendar.google.com/event"
+        db.session.add_all([connection, event])
+        db.session.flush()
+        db.session.add(
+            GoogleCalendarSyncJob(
+                action=GOOGLE_SYNC_ACTION_DELETE,
+                event_id=event.id,
+                google_event_id=event.google_event_id,
+                google_calendar_id=event.google_calendar_id,
+                status=GOOGLE_SYNC_STATUS_PENDING,
+            )
+        )
+        db.session.commit()
+        event_id = event.id
+
+        result = process_pending_google_calendar_jobs()
+
+        event = db.session.get(Event, event_id)
+        assert result["processed"] == 1
+        assert GoogleCalendarSyncJob.query.count() == 0
+        assert event.google_event_id is None
+        assert event.google_calendar_id is None
+        assert event.google_event_link is None
 
 
 def test_google_calendar_sync_creates_google_event_with_configured_calendar(app):

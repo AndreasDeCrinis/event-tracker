@@ -191,6 +191,7 @@ def create_event():
     ends_at_time_value = _optional_text("ends_at_time")
     location = _optional_text("location")
     booking_status = request.form.get("booking_status", BOOKING_PLANNING)
+    sync_to_google_calendar = _form_checkbox_checked("sync_to_google_calendar", default=True)
 
     if not all((name, starts_on_value, ends_on_value)):
         return _redirect("events")
@@ -219,6 +220,7 @@ def create_event():
         location=location,
         booking_status=booking_status,
         notes=_optional_text("notes"),
+        sync_to_google_calendar=sync_to_google_calendar,
     )
     db.session.add(event)
     db.session.flush()
@@ -261,6 +263,17 @@ def set_event_booking_status(event_id):
     db.session.commit()
     _wake_google_sync_worker(google_sync_queued)
     flash(f"{event.name} ist jetzt {EVENT_BOOKING_STATUS_LABELS[event.booking_status]}.", "success")
+    return _redirect("event-" + str(event.id))
+
+
+@bp.post("/events/<int:event_id>/calendar-sync")
+def set_event_calendar_sync(event_id):
+    event = Event.query.get_or_404(event_id)
+    event.sync_to_google_calendar = _form_checkbox_checked("sync_to_google_calendar")
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
+    db.session.commit()
+    _wake_google_sync_worker(google_sync_queued)
+    flash(f"Kalender-Sync für {event.name} wurde aktualisiert.", "success")
     return _redirect("event-" + str(event.id))
 
 
@@ -883,7 +896,7 @@ def _sync_all_google_events(connection):
     )
     db.session.commit()
     _wake_google_sync_worker(queued > 0)
-    flash(f"{queued} Events wurden für Google Kalender vorgemerkt.", "success")
+    flash(f"{queued} Kalenderaktionen wurden vorgemerkt.", "success")
 
 
 def _utc_now():
@@ -920,6 +933,13 @@ def _required_text(field, label):
 
 def _optional_text(field):
     return (request.form.get(field) or "").strip() or None
+
+
+def _form_checkbox_checked(field, default=False):
+    values = request.form.getlist(field)
+    if not values:
+        return default
+    return "1" in values
 
 
 def _positive_int(field, label):

@@ -46,6 +46,16 @@
 
       <div class="collapsible-body event-card-body">
         <div class="event-actions">
+          <form class="inline-form checkbox-form" method="post" action="{{ url_for('main.set_event_calendar_sync', event_id=event.id) }}">
+            <input type="hidden" name="sync_to_google_calendar" value="0">
+            <label class="checkbox-label" for="calendar-sync-{{ event.id }}">
+              <input id="calendar-sync-{{ event.id }}" type="checkbox" name="sync_to_google_calendar" value="1" {% if event.sync_to_google_calendar %}checked{% endif %}>
+              <span>Mit Google Kalender synchronisieren</span>
+            </label>
+            <button class="compact-icon-button save-button" type="submit" aria-label="Kalender-Sync speichern" title="Speichern">
+              {{ action_icon("save") }}
+            </button>
+          </form>
           {% if event.status == planned_status and not archived %}
             <form class="inline-form" method="post" action="{{ url_for('main.set_event_booking_status', event_id=event.id) }}">
               <label class="sr-only" for="booking-status-{{ event.id }}">Planungsstatus</label>
@@ -239,6 +249,11 @@
           <label class="span-2">
             <span>Notizen</span>
             <input name="notes" placeholder="Optional">
+          </label>
+          <label class="checkbox-label span-2">
+            <input type="hidden" name="sync_to_google_calendar" value="0">
+            <input type="checkbox" name="sync_to_google_calendar" value="1" checked>
+            <span>Mit Google Kalender synchronisieren</span>
           </label>
         </div>
         <button class="primary-button" type="submit">Event hinzufügen</button>
