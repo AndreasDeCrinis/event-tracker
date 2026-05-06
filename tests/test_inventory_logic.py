@@ -611,6 +611,8 @@ def test_inventory_renders_material_groups_and_consumable_usage_metrics(app):
     assert "20 Stk." in html
     assert "80 Stk." in html
     assert '<details class="material-item material-kind-fixed"' in html
+    assert 'id="material-' in html
+    assert 'data-collapse-state-key="material:' in html
     assert '<details class="material-item material-kind-fixed" open>' not in html
     assert 'class="material-item-header collapsible-summary"' in html
     assert "<table" not in html
@@ -632,11 +634,14 @@ def test_event_list_view_is_default(app):
         event = make_event("List view event", date(2999, 1, 10), date(2999, 1, 10))
         db.session.add(event)
         db.session.commit()
+        event_id = event.id
 
     html = app.test_client().get("/").data.decode()
 
     assert 'class="event-list"' in html
     assert '<details id="event-' in html
+    assert f'data-collapse-state-key="event:{event_id}"' in html
+    assert 'src="/static/collapsible-state.js"' in html
     assert 'class="event-card status-planned " open>' not in html
     assert 'class="event-card-header collapsible-summary"' in html
     assert "List view event" in html

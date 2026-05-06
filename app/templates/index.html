@@ -26,7 +26,7 @@
     {% set can_assign = event.status == planned_status and not archived %}
     {% set is_fixed = event.booking_status == booking_fixed %}
     {% set material_warnings = event_material_warnings.get(event.id, []) %}
-    <details id="event-{{ event.id }}" class="event-card status-{{ event.status }} {% if archived %}archived-card{% endif %}">
+    <details id="event-{{ event.id }}" class="event-card status-{{ event.status }} {% if archived %}archived-card{% endif %}" data-collapse-state-key="event:{{ event.id }}">
       <summary class="event-card-header collapsible-summary">
         <div>
           <div class="title-row">
