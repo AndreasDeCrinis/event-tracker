@@ -610,6 +610,7 @@ def test_inventory_renders_material_groups_and_consumable_usage_metrics(app):
     assert "20 Stk." in html
     assert "80 Stk." in html
     assert '<details class="material-item material-kind-fixed"' in html
+    assert '<details class="material-item material-kind-fixed" open>' not in html
     assert 'class="material-item-header collapsible-summary"' in html
     assert "<table" not in html
 
@@ -635,6 +636,7 @@ def test_event_list_view_is_default(app):
 
     assert 'class="event-list"' in html
     assert '<details id="event-' in html
+    assert 'class="event-card status-planned " open>' not in html
     assert 'class="event-card-header collapsible-summary"' in html
     assert "List view event" in html
     assert "Kalender" in html

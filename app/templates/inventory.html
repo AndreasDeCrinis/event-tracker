@@ -6,7 +6,7 @@
   {% macro material_card(row) %}
     {% set material = row.item %}
     {% set is_consumable = material.kind == material_consumable %}
-    <details class="material-item material-kind-{{ material.kind }}" open>
+    <details class="material-item material-kind-{{ material.kind }}">
       <summary class="material-item-header collapsible-summary">
         <div class="material-title">
           <strong>{{ material.name }}</strong>
