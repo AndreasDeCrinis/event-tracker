@@ -14,6 +14,56 @@
     {% endif %}
   {% endmacro %}
 
+  {% macro material_card(row) %}
+    {% set material = row.item %}
+    {% set is_consumable = material.kind == material_consumable %}
+    <article class="material-item material-kind-{{ material.kind }}">
+      <div class="material-item-header">
+        <div class="material-title">
+          <strong>{{ material.name }}</strong>
+          <span class="kind-chip">{{ material_kind_labels[material.kind] }}</span>
+        </div>
+        <form method="post" action="{{ url_for('main.delete_material', material_id=material.id) }}">
+          <button class="icon-button" type="submit" aria-label="{{ material.name }} löschen">×</button>
+        </form>
+      </div>
+
+      <form class="quantity-form inventory-quantity-form" method="post" action="{{ url_for('main.update_material_quantity', material_id=material.id) }}">
+        <label for="material-total-{{ material.id }}">Gesamtbestand</label>
+        <input id="material-total-{{ material.id }}" type="number" name="total_quantity" min="0" step="1" value="{{ material.total_quantity }}" required>
+        <span>{{ material.unit }}</span>
+        <button class="compact-icon-button save-button" type="submit" aria-label="Gesamtmenge für {{ material.name }} speichern" title="Speichern">
+          {{ action_icon("save") }}
+        </button>
+      </form>
+
+      <dl class="material-metrics">
+        <div class="metric available-metric">
+          <dt>Frei</dt>
+          <dd>
+            <span class="availability {% if row.available == 0 and material.total_quantity > 0 %}empty{% endif %}">
+              {{ row.available }} {{ material.unit }}
+            </span>
+          </dd>
+        </div>
+        <div class="metric">
+          <dt>{{ "Reserviert" if is_consumable else "Gebunden" }}</dt>
+          <dd>{{ row.reserved }} {{ material.unit }}</dd>
+        </div>
+        {% if is_consumable %}
+          <div class="metric {% if row.open_used > 0 %}attention-metric{% endif %}">
+            <dt>Verbraucht offen</dt>
+            <dd>{{ row.open_used }} {{ material.unit }}</dd>
+          </div>
+          <div class="metric">
+            <dt>Abgezogen</dt>
+            <dd>{{ row.deducted_used }} {{ material.unit }}</dd>
+          </div>
+        {% endif %}
+      </dl>
+    </article>
+  {% endmacro %}
+
   <section class="stats-grid" aria-label="Überblick">
     <div class="stat-panel accent-teal">
       <span>Aktive Events</span>
@@ -304,53 +354,34 @@
           <button class="primary-button" type="submit">Material hinzufügen</button>
         </form>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Position</th>
-                <th>Gesamt</th>
-                <th>Gebunden / verbraucht</th>
-                <th>Frei</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in material_rows %}
-                <tr>
-                  <td>
-                    <strong>{{ row.item.name }}</strong>
-                    <span class="subtle">{{ material_kind_labels[row.item.kind] }}</span>
-                  </td>
-                  <td>
-                    <form class="quantity-form" method="post" action="{{ url_for('main.update_material_quantity', material_id=row.item.id) }}">
-                      <label class="sr-only" for="material-total-{{ row.item.id }}">Gesamtmenge</label>
-                      <input id="material-total-{{ row.item.id }}" type="number" name="total_quantity" min="0" step="1" value="{{ row.item.total_quantity }}" required>
-                      <span>{{ row.item.unit }}</span>
-                      <button class="compact-icon-button save-button" type="submit" aria-label="Gesamtmenge für {{ row.item.name }} speichern" title="Speichern">
-                        {{ action_icon("save") }}
-                      </button>
-                    </form>
-                  </td>
-                  <td>{{ row.allocated }}</td>
-                  <td>
-                    <span class="availability {% if row.available == 0 and row.item.total_quantity > 0 %}empty{% endif %}">
-                      {{ row.available }}
-                    </span>
-                  </td>
-                  <td>
-                    <form method="post" action="{{ url_for('main.delete_material', material_id=row.item.id) }}">
-                      <button class="icon-button" type="submit" aria-label="{{ row.item.name }} löschen">×</button>
-                    </form>
-                  </td>
-                </tr>
+        <div class="material-groups">
+          <section class="material-group">
+            <div class="material-group-heading">
+              <h3>Festes Material</h3>
+              <span>{{ fixed_material_rows | length }}</span>
+            </div>
+            <div class="material-list">
+              {% for row in fixed_material_rows %}
+                {{ material_card(row) }}
               {% else %}
-                <tr>
-                  <td colspan="5" class="empty-cell">Keine Inventarpositionen.</td>
-                </tr>
+                <p class="empty-state">Kein festes Material.</p>
               {% endfor %}
-            </tbody>
-          </table>
+            </div>
+          </section>
+
+          <section class="material-group">
+            <div class="material-group-heading">
+              <h3>Verbrauchsmaterial</h3>
+              <span>{{ consumable_material_rows | length }}</span>
+            </div>
+            <div class="material-list">
+              {% for row in consumable_material_rows %}
+                {{ material_card(row) }}
+              {% else %}
+                <p class="empty-state">Kein Verbrauchsmaterial.</p>
+              {% endfor %}
+            </div>
+          </section>
         </div>
       </section>
 

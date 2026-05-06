@@ -175,6 +175,66 @@ def material_allocated_quantity(material, target_event=None, moment=None, exclud
     return total
 
 
+def material_reserved_quantity(material, moment=None, exclude_event_id=None):
+    if material.kind != MATERIAL_CONSUMABLE:
+        return material_allocated_quantity(material, moment=moment, exclude_event_id=exclude_event_id)
+
+    moment = moment or datetime.now()
+    total = 0
+
+    for assignment in material.assignments:
+        event = assignment.event
+
+        if exclude_event_id and event.id == exclude_event_id:
+            continue
+
+        if (
+            event.booking_status == BOOKING_FIXED
+            and event.status == STATUS_PLANNED
+            and event.ends_at > moment
+        ):
+            total += assignment.quantity
+
+    return total
+
+
+def material_open_used_quantity(material, moment=None, exclude_event_id=None):
+    if material.kind != MATERIAL_CONSUMABLE:
+        return 0
+
+    moment = moment or datetime.now()
+    total = 0
+
+    for assignment in material.assignments:
+        event = assignment.event
+
+        if exclude_event_id and event.id == exclude_event_id:
+            continue
+
+        if event.booking_status != BOOKING_FIXED:
+            continue
+
+        if event.status == STATUS_PLANNED and event.ends_at <= moment:
+            total += assignment.quantity
+        elif event.status == STATUS_COMPLETED and event.consumables_deducted_at is None:
+            total += assignment.quantity
+
+    return total
+
+
+def material_deducted_used_quantity(material):
+    if material.kind != MATERIAL_CONSUMABLE:
+        return 0
+
+    return sum(
+        assignment.quantity
+        for assignment in material.assignments
+        if assignment.event.booking_status == BOOKING_FIXED
+        and assignment.event.status == STATUS_COMPLETED
+        and assignment.event.consumables_deducted_at is not None
+    )
+
+
 def material_available_quantity(material, target_event=None, moment=None, exclude_event_id=None):
     allocated = material_allocated_quantity(
         material,

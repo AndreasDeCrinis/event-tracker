@@ -225,6 +225,7 @@ main {
   grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
   gap: 18px;
   align-items: start;
+  min-width: 0;
 }
 
 .settings-layout {
@@ -237,6 +238,7 @@ main {
 .secondary-flow {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 
 .section-heading {
@@ -253,6 +255,7 @@ main {
 .tool-panel,
 .event-card,
 .empty-panel {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -511,6 +514,7 @@ select:focus {
 .quantity-form {
   gap: 6px;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .assign-form input {
@@ -537,6 +541,168 @@ select:focus {
 .quantity-form button:hover {
   border-color: var(--teal);
   color: var(--teal-dark);
+}
+
+.material-groups {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  min-width: 0;
+}
+
+.material-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.material-group-heading,
+.material-item-header,
+.material-title {
+  display: flex;
+  align-items: center;
+}
+
+.material-group-heading {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.material-group-heading span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.material-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.material-item {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--teal);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.material-item.material-kind-consumable {
+  border-left-color: var(--gold);
+}
+
+.material-item-header {
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.material-title {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.material-title strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
+.kind-chip {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  background: rgba(8, 127, 114, 0.11);
+  color: var(--teal-dark);
+  padding: 3px 8px;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.material-kind-consumable .kind-chip {
+  background: rgba(183, 121, 31, 0.12);
+  color: #7a4b12;
+}
+
+.inventory-quantity-form {
+  display: grid;
+  grid-template-columns: minmax(70px, 84px) auto 30px;
+  justify-content: start;
+  align-items: center;
+  gap: 6px;
+}
+
+.inventory-quantity-form label {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.inventory-quantity-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.inventory-quantity-form span {
+  color: var(--text);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.material-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.metric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 8px;
+}
+
+.metric dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.metric dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 850;
+}
+
+.available-metric {
+  border-color: rgba(8, 127, 114, 0.24);
+  background: rgba(8, 127, 114, 0.05);
+}
+
+.attention-metric {
+  border-color: rgba(183, 121, 31, 0.35);
+  background: rgba(183, 121, 31, 0.08);
 }
 
 .ghost-button,
@@ -743,7 +909,8 @@ th {
   }
 
   .stats-grid,
-  .form-grid {
+  .form-grid,
+  .material-metrics {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -771,7 +938,8 @@ th {
 
   .stats-grid,
   .form-grid,
-  .two-column {
+  .two-column,
+  .material-metrics {
     grid-template-columns: 1fr;
   }
 

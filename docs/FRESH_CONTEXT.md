@@ -14,6 +14,7 @@ The app tracks event jobs and resources:
 - Job archive for old, completed, or cancelled events.
 - Google Calendar sync to a user-specified calendar.
 - Successful event closure reduces the total quantity of assigned consumable materials.
+- The inventory separates fixed material from consumables and shows consumables as available, reserved, open used, and already deducted.
 
 ## Local State And Secrets
 
@@ -140,7 +141,7 @@ docker compose run --rm web pytest
 Current expected result:
 
 ```text
-31 passed
+35 passed
 ```
 
 Known warnings:
@@ -198,7 +199,7 @@ https://foo.decrinis.com/google-calendar/oauth2callback
 
 ## Release Pipeline
 
-The GitHub Actions workflow builds and pushes Docker images to:
+The GitHub Actions workflow runs tests, then builds and pushes Docker images to:
 
 ```text
 adecrinis/event-job-tracker

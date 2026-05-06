@@ -21,6 +21,9 @@ from app.models import (
     material_assignable_quantity,
     material_allocated_quantity,
     material_available_quantity,
+    material_deducted_used_quantity,
+    material_open_used_quantity,
+    material_reserved_quantity,
     material_shortage_quantity,
     personnel_has_conflict,
     personnel_is_available,
@@ -146,6 +149,51 @@ def test_legacy_completed_consumable_without_deduction_marker_stays_allocated(ap
         assert fuel.total_quantity == 100
         assert material_allocated_quantity(fuel) == 20
         assert material_available_quantity(fuel) == 80
+
+
+def test_past_planned_consumable_is_visualized_as_open_used(app):
+    with app.app_context():
+        fuel = Material(name="Past open fuel", kind=MATERIAL_CONSUMABLE, total_quantity=100, unit="bottles")
+        event = make_event("Past open fuel event", date(2000, 1, 1), date(2000, 1, 1))
+        db.session.add_all([fuel, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=fuel, quantity=20))
+        db.session.commit()
+
+        assert material_reserved_quantity(fuel, moment=datetime(2026, 1, 1)) == 0
+        assert material_open_used_quantity(fuel, moment=datetime(2026, 1, 1)) == 20
+        assert material_available_quantity(fuel, moment=datetime(2026, 1, 1)) == 80
+
+
+def test_future_planned_consumable_is_visualized_as_reserved(app):
+    with app.app_context():
+        fuel = Material(name="Future reserved fuel", kind=MATERIAL_CONSUMABLE, total_quantity=100, unit="bottles")
+        event = make_event("Future reserved fuel event", date(2999, 1, 1), date(2999, 1, 1))
+        db.session.add_all([fuel, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=fuel, quantity=20))
+        db.session.commit()
+
+        assert material_reserved_quantity(fuel, moment=datetime(2026, 1, 1)) == 20
+        assert material_open_used_quantity(fuel, moment=datetime(2026, 1, 1)) == 0
+        assert material_available_quantity(fuel, moment=datetime(2026, 1, 1)) == 80
+
+
+def test_completed_deducted_consumable_is_visualized_as_deducted_history(app):
+    with app.app_context():
+        fuel = Material(name="Deducted history fuel", kind=MATERIAL_CONSUMABLE, total_quantity=80, unit="bottles")
+        event = make_event("Deducted history event", date(2026, 1, 1), date(2026, 1, 1))
+        event.status = STATUS_COMPLETED
+        event.consumables_deducted_at = datetime(2026, 1, 2)
+        db.session.add_all([fuel, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=fuel, quantity=20))
+        db.session.commit()
+
+        assert material_reserved_quantity(fuel, moment=datetime(2026, 1, 3)) == 0
+        assert material_open_used_quantity(fuel, moment=datetime(2026, 1, 3)) == 0
+        assert material_deducted_used_quantity(fuel) == 20
+        assert material_available_quantity(fuel, moment=datetime(2026, 1, 3)) == 80
 
 
 def test_consumable_material_is_not_reduced_when_event_is_cancelled(app):
@@ -465,6 +513,26 @@ def test_material_total_quantity_can_be_updated(app):
     assert response.status_code == 302
     with app.app_context():
         assert db.session.get(Material, material_id).total_quantity == 8
+
+
+def test_inventory_renders_material_groups_and_consumable_usage_metrics(app):
+    with app.app_context():
+        fixed = Material(name="Projector", kind=MATERIAL_FIXED, total_quantity=2, unit="pcs")
+        consumable = Material(name="Gas bottles", kind=MATERIAL_CONSUMABLE, total_quantity=100, unit="Stk.")
+        event = make_event("Past gas event", date(2000, 1, 1), date(2000, 1, 1))
+        db.session.add_all([fixed, consumable, event])
+        db.session.flush()
+        db.session.add(EventMaterial(event=event, material=consumable, quantity=20))
+        db.session.commit()
+
+    html = app.test_client().get("/").data.decode()
+
+    assert "Festes Material" in html
+    assert "Verbrauchsmaterial" in html
+    assert "Verbraucht offen" in html
+    assert "20 Stk." in html
+    assert "80 Stk." in html
+    assert "<table" not in html[html.index("<h2>Inventar</h2>") : html.index("<h2>Personal</h2>")]
 
 
 def test_fixed_event_material_assignment_quantity_can_be_updated_when_available(app):

@@ -50,6 +50,7 @@ tests/
 - `Fixiert` books inventory and must not exceed availability.
 - Fixed material is only reserved for overlapping active planned fixed events.
 - Consumables count as reserved while fixed events are planned. On successful completion, assigned consumable quantities are subtracted from the material's total quantity.
+- The inventory UI separates fixed material and consumables. Consumables show reserved stock, open used stock, already deducted usage, and available stock.
 - Cancelled events release fixed and consumable reservations.
 - Personnel conflicts are based on overlapping planned events.
 

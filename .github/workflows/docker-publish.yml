@@ -113,6 +113,10 @@ jobs:
             echo "major=${major}"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Run tests
+        if: steps.version.outputs.should_release == 'true'
+        run: docker compose run --rm web pytest
+
       - name: Set up Docker Buildx
         if: steps.version.outputs.should_release == 'true'
         uses: docker/setup-buildx-action@v3

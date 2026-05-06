@@ -33,6 +33,9 @@ from .models import (
     material_assignable_quantity,
     material_allocated_quantity,
     material_available_quantity,
+    material_deducted_used_quantity,
+    material_open_used_quantity,
+    material_reserved_quantity,
     material_shortage_quantity,
     personnel_has_conflict,
     personnel_is_available,
@@ -77,10 +80,15 @@ def index():
         {
             "item": material,
             "allocated": material_allocated_quantity(material, moment=moment),
+            "reserved": material_reserved_quantity(material, moment=moment),
+            "open_used": material_open_used_quantity(material, moment=moment),
+            "deducted_used": material_deducted_used_quantity(material),
             "available": material_available_quantity(material, moment=moment),
         }
         for material in materials
     ]
+    fixed_material_rows = [row for row in material_rows if row["item"].kind == MATERIAL_FIXED]
+    consumable_material_rows = [row for row in material_rows if row["item"].kind == MATERIAL_CONSUMABLE]
     personnel_rows = [
         {
             "person": person,
@@ -128,6 +136,8 @@ def index():
         active_events=active_events,
         archive_events=archive_events,
         material_rows=material_rows,
+        fixed_material_rows=fixed_material_rows,
+        consumable_material_rows=consumable_material_rows,
         personnel_rows=personnel_rows,
         event_material_options=event_material_options,
         event_personnel_options=event_personnel_options,

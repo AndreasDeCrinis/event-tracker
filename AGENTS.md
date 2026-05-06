@@ -58,6 +58,7 @@ Do not mix `localhost` and `127.0.0.1` during Google OAuth. The session cookie a
 - Fixed events actually book material and enforce availability.
 - Fixed material returns after the event window or closure.
 - Consumable material is reserved while a fixed event is planned. On successful completion, assigned consumable quantities are subtracted from the material's total quantity.
+- Inventory UI separates fixed material and consumables. Consumables show reserved stock, open used stock from past/not-yet-deducted events, already deducted usage, and available stock.
 - Cancelled events release reservations.
 - Personnel are busy only during planned overlapping events.
 - Completed, cancelled, and past planned jobs appear in the archive.
@@ -89,7 +90,7 @@ Google OAuth uses PKCE. The route stores both the OAuth `state` and `code_verifi
 
 ## CI And Publishing
 
-The GitHub workflow in `.github/workflows/docker-publish.yml` builds and pushes `adecrinis/event-job-tracker`.
+The GitHub workflow in `.github/workflows/docker-publish.yml` runs tests, then builds and pushes `adecrinis/event-job-tracker`.
 
 Release tagging follows Conventional Commits:
 
