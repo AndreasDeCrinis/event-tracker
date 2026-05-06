@@ -799,6 +799,42 @@ def test_event_template_can_create_event_with_assignments(app):
         assert [assignment.personnel.name for assignment in event.personnel_assignments] == ["Template tech"]
 
 
+def test_event_template_create_form_can_save_default_material(app):
+    with app.app_context():
+        flamethrowers = Material(name="Template flamethrowers", kind=MATERIAL_FIXED, total_quantity=8, unit="Stk.")
+        gas_cans = Material(name="Template gas cans", kind=MATERIAL_CONSUMABLE, total_quantity=20, unit="Kanister")
+        db.session.add_all([flamethrowers, gas_cans])
+        db.session.commit()
+        flamethrower_id = flamethrowers.id
+        gas_can_id = gas_cans.id
+
+    response = app.test_client().post(
+        "/templates",
+        data={
+            "name": "Edmunt",
+            "event_name": "Edmunt",
+            "duration_days": "1",
+            "booking_status": BOOKING_PLANNING,
+            "sync_to_google_calendar": "1",
+            "template_material_ids": [str(flamethrower_id), str(gas_can_id)],
+            f"template_material_quantity_{flamethrower_id}": "3",
+            f"template_material_quantity_{gas_can_id}": "5",
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        template = EventTemplate.query.filter_by(name="Edmunt").one()
+        assert [(assignment.material.name, assignment.quantity) for assignment in template.material_assignments] == [
+            ("Template flamethrowers", 3),
+            ("Template gas cans", 5),
+        ]
+
+    html = app.test_client().get("/templates").data.decode()
+    assert "Template flamethrowers" in html
+    assert "Template gas cans" in html
+
+
 def test_dashboard_event_form_can_apply_selected_template_assignments(app):
     with app.app_context():
         material = Material(name="Dashboard template lights", kind=MATERIAL_FIXED, total_quantity=4, unit="pcs")

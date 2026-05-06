@@ -793,6 +793,50 @@ details[open] > .collapsible-summary .collapse-indicator::before {
   padding: 14px;
 }
 
+.template-default-materials {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.template-material-options {
+  display: grid;
+  gap: 8px;
+}
+
+.template-material-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 74px auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  padding: 8px;
+}
+
+.template-material-option input[type="checkbox"] {
+  width: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  accent-color: var(--teal);
+}
+
+.template-material-option input[type="number"] {
+  width: 100%;
+  min-height: 34px;
+  padding-block: 6px;
+}
+
+.template-material-option strong {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .inline-form select {
   min-width: 128px;
 }

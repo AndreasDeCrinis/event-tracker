@@ -205,6 +205,24 @@
 
         <form method="post" action="{{ url_for('main.create_event_template') }}" class="stacked-form">
           {{ template_fields() }}
+          {% if materials %}
+            <section class="template-default-materials" aria-label="Standard-Material">
+              <div>
+                <p class="eyebrow">Standard</p>
+                <h4>Material</h4>
+              </div>
+              <div class="template-material-options">
+                {% for material in materials %}
+                  <label class="template-material-option">
+                    <input type="checkbox" name="template_material_ids" value="{{ material.id }}">
+                    <span>{{ material.name }}</span>
+                    <input type="number" name="template_material_quantity_{{ material.id }}" min="1" step="1" value="1" aria-label="Menge für {{ material.name }}">
+                    <strong>{{ material.unit }}</strong>
+                  </label>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
           <button class="primary-button" type="submit">Vorlage hinzufügen</button>
         </form>
       </section>

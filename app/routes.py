@@ -274,6 +274,13 @@ def create_event_template():
     db.session.add(template)
 
     try:
+        db.session.flush()
+        material_error = _add_template_materials_from_form(template)
+        if material_error:
+            db.session.rollback()
+            flash(material_error, "error")
+            return _templates_redirect()
+
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -947,6 +954,33 @@ def _copy_template_assignments_to_event(template, event):
                 f"{assignment.personnel.name} ist in diesem Zeitraum bereits zugewiesen."
             )
         db.session.add(EventPersonnel(event=event, personnel=assignment.personnel))
+
+    return None
+
+
+def _add_template_materials_from_form(template):
+    material_ids = []
+    for material_id in request.form.getlist("template_material_ids"):
+        try:
+            material_ids.append(int(material_id))
+        except ValueError:
+            return "Bitte gültiges Standard-Material wählen."
+
+    for material_id in dict.fromkeys(material_ids):
+        material = db.session.get(Material, material_id)
+        if not material:
+            return "Bitte gültiges Standard-Material wählen."
+
+        quantity_field = f"template_material_quantity_{material.id}"
+        try:
+            quantity = int(request.form.get(quantity_field, ""))
+        except ValueError:
+            return f"Menge für {material.name} muss eine ganze Zahl sein."
+
+        if quantity <= 0:
+            return f"Menge für {material.name} muss größer als null sein."
+
+        db.session.add(EventTemplateMaterial(template=template, material=material, quantity=quantity))
 
     return None
 
