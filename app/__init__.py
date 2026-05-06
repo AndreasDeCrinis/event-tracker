@@ -21,6 +21,8 @@ def create_app(config=None):
         PREFERRED_URL_SCHEME=os.environ.get("PREFERRED_URL_SCHEME", "http"),
         SESSION_COOKIE_SECURE=_env_bool("SESSION_COOKIE_SECURE", False),
         SESSION_COOKIE_SAMESITE="Lax",
+        APP_TIME_ZONE=os.environ.get("APP_TIME_ZONE", "Europe/Vienna"),
+        GOOGLE_CALENDAR_SYNC_WORKER_ENABLED=_env_bool("GOOGLE_CALENDAR_SYNC_WORKER_ENABLED", True),
         GOOGLE_CLIENT_ID=os.environ.get("GOOGLE_CLIENT_ID"),
         GOOGLE_CLIENT_SECRET=os.environ.get("GOOGLE_CLIENT_SECRET"),
         GOOGLE_REDIRECT_URI=os.environ.get("GOOGLE_REDIRECT_URI"),
@@ -42,6 +44,11 @@ def create_app(config=None):
     with app.app_context():
         _migrate_database()
         db.create_all()
+
+    if app.config["GOOGLE_CALENDAR_SYNC_WORKER_ENABLED"] and not app.config.get("TESTING"):
+        from .google_calendar_queue import start_google_calendar_sync_worker
+
+        start_google_calendar_sync_worker(app)
 
     return app
 
@@ -194,4 +201,3 @@ def _rebuild_event_table(event_columns):
         connection.commit()
     finally:
         connection.close()
-

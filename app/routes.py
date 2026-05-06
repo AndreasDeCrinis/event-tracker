@@ -8,12 +8,15 @@ from . import db
 from .google_calendar import (
     GoogleCalendarError,
     build_authorization_url,
-    delete_event_from_google,
     exchange_authorization_response,
     google_oauth_is_configured,
     google_redirect_uri,
-    sync_all_events_to_google,
-    sync_event_to_google,
+)
+from .google_calendar_queue import (
+    queue_all_google_event_syncs,
+    queue_google_event_deletion,
+    queue_google_event_sync,
+    trigger_google_calendar_sync_worker,
 )
 from .models import (
     BOOKING_FIXED,
@@ -87,7 +90,6 @@ WEEKDAY_LABELS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 @bp.get("/")
 def index():
     moment = datetime.now()
-    today_start = _today_start()
     event_view = request.args.get("view", "list")
     if event_view not in {"list", "calendar"}:
         event_view = "list"
@@ -95,8 +97,8 @@ def index():
     events = Event.query.order_by(Event.starts_at.asc(), Event.name.asc()).all()
     materials = Material.query.order_by(Material.name.asc()).all()
     people = Personnel.query.order_by(Personnel.name.asc()).all()
-    active_events = [event for event in events if not _event_is_archived(event, today_start)]
-    archive_events = [event for event in events if _event_is_archived(event, today_start)]
+    active_events = [event for event in events if not _event_is_archived(event, moment)]
+    archive_events = [event for event in events if _event_is_archived(event, moment)]
     personnel_rows = [
         {
             "person": person,
@@ -185,6 +187,8 @@ def create_event():
     name = _required_text("name", "Event-Name")
     starts_on_value = _required_text("starts_on", "Beginn")
     ends_on_value = _required_text("ends_on", "Ende")
+    starts_at_time_value = _optional_text("starts_at_time")
+    ends_at_time_value = _optional_text("ends_at_time")
     location = _optional_text("location")
     booking_status = request.form.get("booking_status", BOOKING_PLANNING)
 
@@ -202,21 +206,25 @@ def create_event():
         flash("Bitte ein gültiges Beginndatum und ein gültiges Enddatum verwenden.", "error")
         return _redirect("events")
 
-    if ends_on < starts_on:
-        flash("Das Enddatum darf nicht vor dem Beginndatum liegen.", "error")
+    try:
+        starts_at, ends_at = _event_datetimes(starts_on, ends_on, starts_at_time_value, ends_at_time_value)
+    except ValueError as error:
+        flash(str(error), "error")
         return _redirect("events")
 
     event = Event(
         name=name,
-        starts_at=datetime.combine(starts_on, time.min),
-        ends_at=datetime.combine(ends_on + timedelta(days=1), time.min),
+        starts_at=starts_at,
+        ends_at=ends_at,
         location=location,
         booking_status=booking_status,
         notes=_optional_text("notes"),
     )
     db.session.add(event)
+    db.session.flush()
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
     db.session.commit()
-    _sync_event_if_google_connected(event)
+    _wake_google_sync_worker(google_sync_queued)
     flash(f"{event.name} wurde hinzugefügt.", "success")
     return _redirect("events")
 
@@ -234,7 +242,7 @@ def set_event_booking_status(event_id):
         flash("Nur geplante Events können zwischen In Planung und Fixiert wechseln.", "error")
         return _redirect("event-" + str(event.id))
 
-    if _event_is_archived(event, _today_start()):
+    if _event_is_archived(event, datetime.now()):
         flash("Archivierte Events können nicht mehr fixiert werden.", "error")
         return _redirect("event-" + str(event.id))
 
@@ -249,8 +257,9 @@ def set_event_booking_status(event_id):
             return _redirect("event-" + str(event.id))
 
     event.booking_status = booking_status
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
     db.session.commit()
-    _sync_event_if_google_connected(event)
+    _wake_google_sync_worker(google_sync_queued)
     flash(f"{event.name} ist jetzt {EVENT_BOOKING_STATUS_LABELS[event.booking_status]}.", "success")
     return _redirect("event-" + str(event.id))
 
@@ -272,8 +281,9 @@ def close_event(event_id):
         return _redirect("event-" + str(event.id))
 
     event.status = status
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
     db.session.commit()
-    _sync_event_if_google_connected(event)
+    _wake_google_sync_worker(google_sync_queued)
     flash(f"{event.name} wurde als {EVENT_STATUS_LABELS[event.status].lower()} markiert.", "success")
     return _redirect("event-" + str(event.id))
 
@@ -281,9 +291,10 @@ def close_event(event_id):
 @bp.post("/events/<int:event_id>/delete")
 def delete_event(event_id):
     event = Event.query.get_or_404(event_id)
-    _delete_event_from_google_if_connected(event)
+    google_sync_queued = _queue_event_deletion_if_google_connected(event)
     db.session.delete(event)
     db.session.commit()
+    _wake_google_sync_worker(google_sync_queued)
     flash(f"{event.name} wurde entfernt.", "success")
     return _redirect("events")
 
@@ -504,8 +515,9 @@ def assign_material(event_id):
         assignment = EventMaterial(event=event, material=material, quantity=quantity)
         db.session.add(assignment)
 
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
     db.session.commit()
-    _sync_event_if_google_connected(event)
+    _wake_google_sync_worker(google_sync_queued)
     flash(f"{quantity} {material.unit} {material.name} wurden {event.name} zugewiesen.", "success")
     return _redirect("event-" + str(event.id))
 
@@ -537,8 +549,9 @@ def update_material_assignment_quantity(assignment_id):
             return _redirect("event-" + str(assignment.event_id))
 
     assignment.quantity = quantity
+    google_sync_queued = _queue_event_sync_if_google_connected(assignment.event)
     db.session.commit()
-    _sync_event_if_google_connected(assignment.event)
+    _wake_google_sync_worker(google_sync_queued)
     flash(f"Menge von {assignment.material.name} wurde aktualisiert.", "success")
     return _redirect("event-" + str(assignment.event_id))
 
@@ -555,9 +568,10 @@ def remove_material_assignment(assignment_id):
         return _redirect("event-" + str(event_id))
 
     db.session.delete(assignment)
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
     db.session.commit()
     db.session.expire(event, ["material_assignments"])
-    _sync_event_if_google_connected(event)
+    _wake_google_sync_worker(google_sync_queued)
     flash(f"Zuweisung von {material_name} wurde entfernt.", "success")
     return _redirect("event-" + str(event_id))
 
@@ -581,8 +595,9 @@ def assign_personnel(event_id):
         return _redirect("event-" + str(event.id))
 
     db.session.add(EventPersonnel(event=event, personnel=person))
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
     db.session.commit()
-    _sync_event_if_google_connected(event)
+    _wake_google_sync_worker(google_sync_queued)
     flash(f"{person.name} wurde {event.name} zugewiesen.", "success")
     return _redirect("event-" + str(event.id))
 
@@ -599,9 +614,10 @@ def remove_personnel_assignment(assignment_id):
         return _redirect("event-" + str(event_id))
 
     db.session.delete(assignment)
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
     db.session.commit()
     db.session.expire(event, ["personnel_assignments"])
-    _sync_event_if_google_connected(event)
+    _wake_google_sync_worker(google_sync_queued)
     flash(f"Zuweisung von {person_name} wurde entfernt.", "success")
     return _redirect("event-" + str(event_id))
 
@@ -611,8 +627,46 @@ def date_only(value):
     return value.strftime("%d.%m.%Y")
 
 
+@bp.app_template_filter("event_range")
+def event_range(event):
+    if event.is_all_day:
+        return f"{date_only(event.starts_on)} bis {date_only(event.ends_on)}"
+
+    return (
+        f"{date_only(event.starts_on)} {event.starts_at.strftime('%H:%M')} "
+        f"bis {date_only(event.ends_on)} {event.ends_at.strftime('%H:%M')}"
+    )
+
+
 def _parse_date_local(value):
     return datetime.strptime(value, "%Y-%m-%d").date()
+
+
+def _parse_time_local(value):
+    return datetime.strptime(value, "%H:%M").time()
+
+
+def _event_datetimes(starts_on, ends_on, starts_at_time_value=None, ends_at_time_value=None):
+    if bool(starts_at_time_value) != bool(ends_at_time_value):
+        raise ValueError("Bitte Startzeit und Endzeit gemeinsam angeben oder beide leer lassen.")
+
+    if starts_at_time_value and ends_at_time_value:
+        try:
+            starts_at_time = _parse_time_local(starts_at_time_value)
+            ends_at_time = _parse_time_local(ends_at_time_value)
+        except ValueError as error:
+            raise ValueError("Bitte gültige Start- und Endzeiten verwenden.") from error
+
+        starts_at = datetime.combine(starts_on, starts_at_time)
+        ends_at = datetime.combine(ends_on, ends_at_time)
+        if ends_at <= starts_at:
+            raise ValueError("Ende muss nach Beginn liegen.")
+        return starts_at, ends_at
+
+    if ends_on < starts_on:
+        raise ValueError("Das Enddatum darf nicht vor dem Beginndatum liegen.")
+
+    return datetime.combine(starts_on, time.min), datetime.combine(ends_on + timedelta(days=1), time.min)
 
 
 def _redirect(anchor):
@@ -713,14 +767,14 @@ def _month_key(year, month):
     return f"{year:04d}-{month:02d}"
 
 
-def _event_is_archived(event, today_start):
+def _event_is_archived(event, moment):
     return event.status in (STATUS_COMPLETED, STATUS_CANCELLED) or (
-        event.status == STATUS_PLANNED and event.ends_at <= today_start
+        event.status == STATUS_PLANNED and event.ends_at <= moment
     )
 
 
 def _event_is_open_for_assignment(event):
-    return event.status == STATUS_PLANNED and not _event_is_archived(event, _today_start())
+    return event.status == STATUS_PLANNED and not _event_is_archived(event, datetime.now())
 
 
 def _deduct_consumables_for_completed_event(event):
@@ -801,37 +855,17 @@ def _clear_google_event_links(calendar_id):
         event.google_sync_error = None
 
 
-def _sync_event_if_google_connected(event):
-    connection = _google_calendar_connection()
-
-    if not connection or not connection.calendar_id or not connection.is_connected:
-        return
-
-    try:
-        sync_event_to_google(event, connection)
-    except GoogleCalendarError as error:
-        event.google_sync_error = str(error)
-        connection.last_error = str(error)
-        db.session.commit()
-        flash(f"Google Kalender konnte nicht synchronisiert werden: {error}", "error")
-        return
-
-    connection.last_synced_at = _utc_now()
-    connection.last_error = None
-    db.session.commit()
+def _queue_event_sync_if_google_connected(event):
+    return queue_google_event_sync(event)
 
 
-def _delete_event_from_google_if_connected(event):
-    connection = _google_calendar_connection()
+def _queue_event_deletion_if_google_connected(event):
+    return queue_google_event_deletion(event)
 
-    if not connection or not connection.calendar_id or not connection.is_connected or not event.google_event_id:
-        return
 
-    try:
-        delete_event_from_google(event, connection)
-    except GoogleCalendarError as error:
-        connection.last_error = str(error)
-        flash(f"Google Kalender konnte nicht bereinigt werden: {error}", "error")
+def _wake_google_sync_worker(queued):
+    if queued:
+        trigger_google_calendar_sync_worker()
 
 
 def _sync_all_google_events(connection):
@@ -843,23 +877,13 @@ def _sync_all_google_events(connection):
         flash("Bitte zuerst Google Kalender verbinden.", "error")
         return
 
-    try:
-        result = sync_all_events_to_google(connection, Event.query.order_by(Event.starts_at.asc()).all())
-    except GoogleCalendarError as error:
-        connection.last_error = str(error)
-        db.session.commit()
-        flash(f"Google Kalender konnte nicht synchronisiert werden: {error}", "error")
-        return
-
+    queued = queue_all_google_event_syncs(
+        Event.query.order_by(Event.starts_at.asc()).all(),
+        connection=connection,
+    )
     db.session.commit()
-    if result["failed"]:
-        flash(f"{result['synced']} Events synchronisiert, {result['failed']} fehlgeschlagen.", "error")
-    else:
-        flash(f"{result['synced']} Events wurden mit Google Kalender synchronisiert.", "success")
-
-
-def _today_start():
-    return datetime.combine(datetime.now().date(), time.min)
+    _wake_google_sync_worker(queued > 0)
+    flash(f"{queued} Events wurden für Google Kalender vorgemerkt.", "success")
 
 
 def _utc_now():

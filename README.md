@@ -1,6 +1,6 @@
 # Event Job Tracker
 
-A small Flask application for tracking events/jobs with a start/end date range, personnel, fixed materials, consumables, and the assignments between them.
+A small Flask application for tracking events/jobs with a start/end date range, optional start/end times, personnel, fixed materials, consumables, and the assignments between them.
 
 ## Run With Docker
 
@@ -23,6 +23,7 @@ docker compose run --rm web pytest
 - `/` shows the event dashboard with active events, personnel, and the job archive. Active events can be viewed as a list or as a monthly calendar.
 - `/inventory` manages fixed material and consumables separately.
 - `/settings` contains the Google Calendar connection.
+- Event and inventory cards are collapsible in the list views.
 
 ## Publish Docker Image
 
@@ -78,7 +79,7 @@ For direct local HTTP access without a proxy, set `TRUSTED_PROXY_COUNT=0` and `S
 
 ## Google Calendar Sync
 
-The app can connect to Google Calendar with OAuth and sync every Event to one calendar ID entered in the UI.
+The app can connect to Google Calendar with OAuth and sync every Event to one calendar ID entered in the UI. Event saves enqueue Google Calendar work and return immediately; a background worker processes the pending sync jobs.
 
 Google Cloud setup:
 
@@ -117,6 +118,7 @@ https://www.googleapis.com/auth/calendar.events
 ## Inventory Logic
 
 - Events can be `In Planung` or `Fixiert`.
+- Events without times are full-day events. If start and end times are provided, availability and calendar sync use the exact time range.
 - `In Planung` events can list more material than is currently available. They do not reserve or consume inventory, and the UI warns when planned material may be insufficient.
 - `Fixiert` events actually book material. Fixed materials, such as flamethrowers, are reserved only for fixed planned events that overlap the same date range.
 - Consumables, such as flamethrower fuel, are reserved for fixed planned events. When an event is successfully completed, the assigned consumable quantities are subtracted from the material's total quantity.

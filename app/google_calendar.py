@@ -161,12 +161,10 @@ def google_event_body(event):
             for assignment in event.personnel_assignments
         )
 
-    return {
+    body = {
         "summary": _google_summary(event),
         "location": event.location or "",
         "description": "\n".join(description_lines),
-        "start": {"date": event.starts_on.isoformat()},
-        "end": {"date": event.ends_at.date().isoformat()},
         "transparency": "transparent" if event.status == STATUS_CANCELLED else "opaque",
         "extendedProperties": {
             "private": {
@@ -174,6 +172,16 @@ def google_event_body(event):
             }
         },
     }
+
+    if event.is_all_day:
+        body["start"] = {"date": event.starts_on.isoformat()}
+        body["end"] = {"date": event.ends_at.date().isoformat()}
+    else:
+        time_zone = current_app.config.get("APP_TIME_ZONE", "Europe/Vienna")
+        body["start"] = {"dateTime": event.starts_at.isoformat(), "timeZone": time_zone}
+        body["end"] = {"dateTime": event.ends_at.isoformat(), "timeZone": time_zone}
+
+    return body
 
 
 def _google_summary(event):

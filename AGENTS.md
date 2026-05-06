@@ -42,6 +42,7 @@ Do not mix `localhost` and `127.0.0.1` during Google OAuth. The session cookie a
 - `app/models.py`: SQLAlchemy models and inventory/personnel availability logic.
 - `app/routes.py`: Flask routes for dashboard, settings, CRUD, assignments, closure, and Google Calendar actions.
 - `app/google_calendar.py`: Google OAuth and Calendar API sync helpers.
+- `app/google_calendar_queue.py`: persistent Google Calendar sync queue and background worker.
 - `app/templates/base.html`: common shell and burger menu.
 - `app/templates/index.html`: event dashboard with list/calendar views and personnel.
 - `app/templates/inventory.html`: inventory management page.
@@ -53,13 +54,14 @@ Do not mix `localhost` and `127.0.0.1` during Google OAuth. The session cookie a
 
 ## Current Product Behavior
 
-- Events use a date range only, no hours.
+- Events use a date range with optional start/end times. Missing times mean a full-day event.
 - Active events can be viewed as a list or monthly calendar on `/`.
+- Event cards and inventory items are collapsible in list views.
 - Event location is optional.
 - Events can be `In Planung` or `Fixiert`.
 - Planned events may over-assign material and show warnings.
 - Fixed events actually book material and enforce availability.
-- Fixed material returns after the event window or closure.
+- Fixed material returns after the event window or closure. Timed events only block overlapping timed ranges.
 - Consumable material is reserved while a fixed event is planned. On successful completion, assigned consumable quantities are subtracted from the material's total quantity.
 - Inventory management lives on `/inventory` and separates fixed material from consumables. Consumables show reserved stock, open used stock from past/not-yet-deducted events, already deducted usage, and available stock.
 - Cancelled events release reservations.
@@ -67,6 +69,7 @@ Do not mix `localhost` and `127.0.0.1` during Google OAuth. The session cookie a
 - Completed, cancelled, and past planned jobs appear in the archive.
 - Material quantities and event material assignment quantities are editable.
 - Google Calendar integration lives on `/settings`, reached through the burger menu.
+- Google Calendar writes are asynchronous: routes enqueue `GoogleCalendarSyncJob` records and the background worker processes them.
 
 ## Google Calendar Notes
 

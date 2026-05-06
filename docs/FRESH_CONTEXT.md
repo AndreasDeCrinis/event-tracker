@@ -6,7 +6,7 @@ This document is for future Codex, Claude, or another coding agent starting with
 
 The app tracks event jobs and resources:
 
-- Events with date ranges and optional locations.
+- Events with date ranges, optional start/end times, and optional locations.
 - Personnel assignments.
 - Fixed material, such as reusable equipment.
 - Consumable material, such as fuel.
@@ -15,7 +15,9 @@ The app tracks event jobs and resources:
 - Google Calendar sync to a user-specified calendar.
 - Successful event closure reduces the total quantity of assigned consumable materials.
 - The event dashboard supports list and monthly calendar views.
+- Event cards and inventory items are collapsible in list views.
 - The `/inventory` page separates fixed material from consumables and shows consumables as available, reserved, open used, and already deducted.
+- Google Calendar writes are queued asynchronously and processed by a background worker.
 
 ## Local State And Secrets
 
@@ -73,6 +75,7 @@ Assignment tables:
 Google connection:
 
 - `GoogleCalendarConnection`
+- `GoogleCalendarSyncJob`
 
 ## Routes To Know
 
@@ -135,6 +138,8 @@ Existing migrations handle:
 - Adding Google Calendar fields to events.
 - Creating indexes needed by the current models.
 
+New tables are created by `db.create_all()`, including the Google Calendar sync queue table.
+
 If schema changes grow, consider introducing Flask-Migrate/Alembic, but do not mix approaches casually.
 
 ## Testing Checklist
@@ -148,7 +153,7 @@ docker compose run --rm web pytest
 Current expected result:
 
 ```text
-38 passed
+44 passed
 ```
 
 Known warnings:

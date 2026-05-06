@@ -6,53 +6,57 @@
   {% macro material_card(row) %}
     {% set material = row.item %}
     {% set is_consumable = material.kind == material_consumable %}
-    <article class="material-item material-kind-{{ material.kind }}">
-      <div class="material-item-header">
+    <details class="material-item material-kind-{{ material.kind }}" open>
+      <summary class="material-item-header collapsible-summary">
         <div class="material-title">
           <strong>{{ material.name }}</strong>
           <span class="kind-chip">{{ material_kind_labels[material.kind] }}</span>
         </div>
+        <span class="collapse-indicator">Details</span>
+      </summary>
+
+      <div class="collapsible-body material-item-body">
         <form method="post" action="{{ url_for('main.delete_material', material_id=material.id) }}">
           <button class="compact-icon-button remove-button" type="submit" aria-label="{{ material.name }} löschen" title="Entfernen">
             {{ action_icon("remove") }}
           </button>
         </form>
-      </div>
 
-      <form class="quantity-form inventory-quantity-form" method="post" action="{{ url_for('main.update_material_quantity', material_id=material.id) }}">
-        <label for="material-total-{{ material.id }}">Gesamtbestand</label>
-        <input id="material-total-{{ material.id }}" type="number" name="total_quantity" min="0" step="1" value="{{ material.total_quantity }}" required>
-        <span>{{ material.unit }}</span>
-        <button class="compact-icon-button save-button" type="submit" aria-label="Gesamtmenge für {{ material.name }} speichern" title="Speichern">
-          {{ action_icon("save") }}
-        </button>
-      </form>
+        <form class="quantity-form inventory-quantity-form" method="post" action="{{ url_for('main.update_material_quantity', material_id=material.id) }}">
+          <label for="material-total-{{ material.id }}">Gesamtbestand</label>
+          <input id="material-total-{{ material.id }}" type="number" name="total_quantity" min="0" step="1" value="{{ material.total_quantity }}" required>
+          <span>{{ material.unit }}</span>
+          <button class="compact-icon-button save-button" type="submit" aria-label="Gesamtmenge für {{ material.name }} speichern" title="Speichern">
+            {{ action_icon("save") }}
+          </button>
+        </form>
 
-      <dl class="material-metrics">
-        <div class="metric available-metric">
-          <dt>Frei</dt>
-          <dd>
-            <span class="availability {% if row.available == 0 and material.total_quantity > 0 %}empty{% endif %}">
-              {{ row.available }} {{ material.unit }}
-            </span>
-          </dd>
-        </div>
-        <div class="metric">
-          <dt>{{ "Reserviert" if is_consumable else "Gebunden" }}</dt>
-          <dd>{{ row.reserved }} {{ material.unit }}</dd>
-        </div>
-        {% if is_consumable %}
-          <div class="metric {% if row.open_used > 0 %}attention-metric{% endif %}">
-            <dt>Verbraucht offen</dt>
-            <dd>{{ row.open_used }} {{ material.unit }}</dd>
+        <dl class="material-metrics">
+          <div class="metric available-metric">
+            <dt>Frei</dt>
+            <dd>
+              <span class="availability {% if row.available == 0 and material.total_quantity > 0 %}empty{% endif %}">
+                {{ row.available }} {{ material.unit }}
+              </span>
+            </dd>
           </div>
           <div class="metric">
-            <dt>Abgezogen</dt>
-            <dd>{{ row.deducted_used }} {{ material.unit }}</dd>
+            <dt>{{ "Reserviert" if is_consumable else "Gebunden" }}</dt>
+            <dd>{{ row.reserved }} {{ material.unit }}</dd>
           </div>
-        {% endif %}
-      </dl>
-    </article>
+          {% if is_consumable %}
+            <div class="metric {% if row.open_used > 0 %}attention-metric{% endif %}">
+              <dt>Verbraucht offen</dt>
+              <dd>{{ row.open_used }} {{ material.unit }}</dd>
+            </div>
+            <div class="metric">
+              <dt>Abgezogen</dt>
+              <dd>{{ row.deducted_used }} {{ material.unit }}</dd>
+            </div>
+          {% endif %}
+        </dl>
+      </div>
+    </details>
   {% endmacro %}
 
   <section id="inventory" class="inventory-page">

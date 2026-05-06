@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy import CheckConstraint, UniqueConstraint
 
@@ -17,6 +17,19 @@ EVENT_STATUSES = (STATUS_PLANNED, STATUS_COMPLETED, STATUS_CANCELLED)
 BOOKING_PLANNING = "planning"
 BOOKING_FIXED = "fixed"
 EVENT_BOOKING_STATUSES = (BOOKING_PLANNING, BOOKING_FIXED)
+
+GOOGLE_SYNC_ACTION_UPSERT = "upsert"
+GOOGLE_SYNC_ACTION_DELETE = "delete"
+GOOGLE_SYNC_ACTIONS = (GOOGLE_SYNC_ACTION_UPSERT, GOOGLE_SYNC_ACTION_DELETE)
+
+GOOGLE_SYNC_STATUS_PENDING = "pending"
+GOOGLE_SYNC_STATUS_RUNNING = "running"
+GOOGLE_SYNC_STATUS_FAILED = "failed"
+GOOGLE_SYNC_STATUSES = (GOOGLE_SYNC_STATUS_PENDING, GOOGLE_SYNC_STATUS_RUNNING, GOOGLE_SYNC_STATUS_FAILED)
+
+
+def _utc_now():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Event(db.Model):
@@ -63,6 +76,18 @@ class Event(db.Model):
         if self.starts_at.time() == time.min and self.ends_at.time() == time.min:
             return (self.ends_at - timedelta(days=1)).date()
         return self.ends_at.date()
+
+    @property
+    def is_all_day(self):
+        return self.starts_at.time() == time.min and self.ends_at.time() == time.min
+
+    @property
+    def starts_at_time(self):
+        return None if self.is_all_day else self.starts_at.time()
+
+    @property
+    def ends_at_time(self):
+        return None if self.is_all_day else self.ends_at.time()
 
     @property
     def status_label(self):
@@ -128,6 +153,27 @@ class GoogleCalendarConnection(db.Model):
     @property
     def is_connected(self):
         return bool(self.credentials_json)
+
+
+class GoogleCalendarSyncJob(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    action = db.Column(db.String(20), nullable=False, index=True)
+    event_id = db.Column(db.Integer, nullable=True, index=True)
+    google_event_id = db.Column(db.String(255), nullable=True)
+    google_calendar_id = db.Column(db.String(255), nullable=True)
+    event_name = db.Column(db.String(120), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default=GOOGLE_SYNC_STATUS_PENDING, index=True)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    last_error = db.Column(db.Text, nullable=True)
+    run_after = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=_utc_now)
+    updated_at = db.Column(db.DateTime, nullable=False, default=_utc_now, onupdate=_utc_now)
+
+    __table_args__ = (
+        CheckConstraint(f"action in {GOOGLE_SYNC_ACTIONS}", name="google_sync_job_action_valid"),
+        CheckConstraint(f"status in {GOOGLE_SYNC_STATUSES}", name="google_sync_job_status_valid"),
+        CheckConstraint("attempts >= 0", name="google_sync_job_attempts_non_negative"),
+    )
 
 
 class EventMaterial(db.Model):

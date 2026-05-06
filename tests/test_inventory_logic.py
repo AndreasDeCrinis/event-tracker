@@ -7,6 +7,8 @@ from app import routes as routes_module
 from app.models import (
     BOOKING_FIXED,
     BOOKING_PLANNING,
+    GOOGLE_SYNC_ACTION_UPSERT,
+    GOOGLE_SYNC_STATUS_PENDING,
     MATERIAL_CONSUMABLE,
     MATERIAL_FIXED,
     STATUS_CANCELLED,
@@ -16,6 +18,7 @@ from app.models import (
     EventMaterial,
     EventPersonnel,
     GoogleCalendarConnection,
+    GoogleCalendarSyncJob,
     Material,
     Personnel,
     material_assignable_quantity,
@@ -29,6 +32,7 @@ from app.models import (
     personnel_is_available,
 )
 from app.google_calendar import google_event_body, sync_event_to_google
+from app.google_calendar_queue import process_pending_google_calendar_jobs
 
 
 def make_event(name, starts_on, ends_on, location="Hall", booking_status=BOOKING_FIXED):
@@ -498,6 +502,77 @@ def test_event_location_is_optional(app):
         assert event.location is None
 
 
+def test_event_can_be_created_with_optional_start_and_end_time(app):
+    response = app.test_client().post(
+        "/events",
+        data={
+            "name": "Timed event",
+            "starts_on": "2999-06-01",
+            "starts_at_time": "10:30",
+            "ends_on": "2999-06-01",
+            "ends_at_time": "12:00",
+            "booking_status": BOOKING_PLANNING,
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = Event.query.filter_by(name="Timed event").one()
+        assert event.starts_at == datetime(2999, 6, 1, 10, 30)
+        assert event.ends_at == datetime(2999, 6, 1, 12, 0)
+        assert not event.is_all_day
+
+    html = app.test_client().get("/").data.decode()
+    assert "01.06.2999 10:30 bis 01.06.2999 12:00" in html
+
+
+def test_event_time_requires_start_and_end_time_together(app):
+    response = app.test_client().post(
+        "/events",
+        data={
+            "name": "Broken timed event",
+            "starts_on": "2999-06-01",
+            "starts_at_time": "10:30",
+            "ends_on": "2999-06-01",
+            "booking_status": BOOKING_PLANNING,
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert Event.query.filter_by(name="Broken timed event").count() == 0
+
+
+def test_timed_events_only_block_overlapping_ranges(app):
+    with app.app_context():
+        material = Material(name="Timed projector", kind=MATERIAL_FIXED, total_quantity=1, unit="pcs")
+        first = Event(
+            name="Morning",
+            starts_at=datetime(2999, 7, 1, 9, 0),
+            ends_at=datetime(2999, 7, 1, 10, 0),
+            booking_status=BOOKING_FIXED,
+        )
+        later = Event(
+            name="Later",
+            starts_at=datetime(2999, 7, 1, 10, 0),
+            ends_at=datetime(2999, 7, 1, 11, 0),
+            booking_status=BOOKING_FIXED,
+        )
+        overlap = Event(
+            name="Overlap",
+            starts_at=datetime(2999, 7, 1, 9, 30),
+            ends_at=datetime(2999, 7, 1, 10, 30),
+            booking_status=BOOKING_FIXED,
+        )
+        db.session.add_all([material, first, later, overlap])
+        db.session.flush()
+        db.session.add(EventMaterial(event=first, material=material, quantity=1))
+        db.session.commit()
+
+        assert material_assignable_quantity(material, later) == 1
+        assert material_assignable_quantity(material, overlap) == 0
+
+
 def test_material_total_quantity_can_be_updated(app):
     with app.app_context():
         material = Material(name="Editable total", kind=MATERIAL_FIXED, total_quantity=2, unit="pcs")
@@ -534,6 +609,8 @@ def test_inventory_renders_material_groups_and_consumable_usage_metrics(app):
     assert "Verbraucht offen" in html
     assert "20 Stk." in html
     assert "80 Stk." in html
+    assert '<details class="material-item material-kind-fixed"' in html
+    assert 'class="material-item-header collapsible-summary"' in html
     assert "<table" not in html
 
 
@@ -557,6 +634,8 @@ def test_event_list_view_is_default(app):
     html = app.test_client().get("/").data.decode()
 
     assert 'class="event-list"' in html
+    assert '<details id="event-' in html
+    assert 'class="event-card-header collapsible-summary"' in html
     assert "List view event" in html
     assert "Kalender" in html
     assert 'class="calendar-panel"' not in html
@@ -763,6 +842,86 @@ def test_google_calendar_event_body_uses_event_date_range_and_assignments(app):
     assert body["end"] == {"date": "2999-10-04"}
     assert "Stage lights: 2 pcs" in body["description"]
     assert "Alex Morgan (Tech)" in body["description"]
+
+
+def test_google_calendar_event_body_uses_datetime_when_event_has_times(app):
+    with app.app_context():
+        event = Event(
+            name="Timed calendar show",
+            starts_at=datetime(2999, 10, 1, 10, 30),
+            ends_at=datetime(2999, 10, 1, 12, 0),
+            location=None,
+            booking_status=BOOKING_FIXED,
+        )
+        db.session.add(event)
+        db.session.commit()
+
+        body = google_event_body(event)
+
+    assert body["start"] == {"dateTime": "2999-10-01T10:30:00", "timeZone": "Europe/Vienna"}
+    assert body["end"] == {"dateTime": "2999-10-01T12:00:00", "timeZone": "Europe/Vienna"}
+
+
+def test_event_save_queues_google_sync_without_calling_google(app, monkeypatch):
+    def fail_sync(*args, **kwargs):
+        raise AssertionError("Google sync should not run during the request")
+
+    monkeypatch.setattr("app.google_calendar_queue.sync_event_to_google", fail_sync)
+
+    with app.app_context():
+        db.session.add(GoogleCalendarConnection(id=1, calendar_id="calendar@example.com", credentials_json="{}"))
+        db.session.commit()
+
+    response = app.test_client().post(
+        "/events",
+        data={
+            "name": "Queued show",
+            "starts_on": "2999-12-01",
+            "ends_on": "2999-12-01",
+            "booking_status": BOOKING_FIXED,
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = Event.query.filter_by(name="Queued show").one()
+        job = GoogleCalendarSyncJob.query.one()
+        assert job.action == GOOGLE_SYNC_ACTION_UPSERT
+        assert job.status == GOOGLE_SYNC_STATUS_PENDING
+        assert job.event_id == event.id
+
+
+def test_google_calendar_queue_worker_processes_pending_event_sync(app, monkeypatch):
+    def fake_sync_event_to_google(event, connection):
+        event.google_event_id = "google-event-queued"
+        event.google_calendar_id = connection.calendar_id
+        event.google_event_link = "https://calendar.google.com/event"
+        event.google_sync_error = None
+
+    monkeypatch.setattr("app.google_calendar_queue.sync_event_to_google", fake_sync_event_to_google)
+
+    with app.app_context():
+        connection = GoogleCalendarConnection(id=1, calendar_id="calendar@example.com", credentials_json="{}")
+        event = make_event("Queued worker show", date(2999, 12, 2), date(2999, 12, 2))
+        db.session.add_all([connection, event])
+        db.session.flush()
+        db.session.add(
+            GoogleCalendarSyncJob(
+                action=GOOGLE_SYNC_ACTION_UPSERT,
+                event_id=event.id,
+                status=GOOGLE_SYNC_STATUS_PENDING,
+            )
+        )
+        db.session.commit()
+        event_id = event.id
+
+        result = process_pending_google_calendar_jobs()
+
+        event = db.session.get(Event, event_id)
+        assert result["processed"] == 1
+        assert GoogleCalendarSyncJob.query.count() == 0
+        assert event.google_event_id == "google-event-queued"
+        assert db.session.get(GoogleCalendarConnection, 1).last_error is None
 
 
 def test_google_calendar_sync_creates_google_event_with_configured_calendar(app):

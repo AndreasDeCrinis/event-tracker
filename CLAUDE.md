@@ -4,7 +4,7 @@ Use this file as the first stop when opening the project with a fresh context.
 
 ## Project Summary
 
-`event-job-tracker` is a local, Dockerized Flask app with SQLite. It tracks event jobs, materials, consumables, personnel assignments, inventory availability, a job archive, and Google Calendar sync.
+`event-job-tracker` is a local, Dockerized Flask app with SQLite. It tracks event jobs, optional event times, materials, consumables, personnel assignments, inventory availability, a job archive, and Google Calendar sync.
 
 The UI is German. The code is English.
 
@@ -16,6 +16,7 @@ app/
   models.py                   SQLAlchemy models and availability logic
   routes.py                   Dashboard/settings/routes/actions
   google_calendar.py          OAuth and Google Calendar sync
+  google_calendar_queue.py    Async Google Calendar sync queue/worker
   static/styles.css           Plain CSS
   templates/
     base.html                 Header and burger menu
@@ -36,6 +37,7 @@ tests/
 - Settings are reached via the burger menu.
 - Inventory is reached via the burger menu and lives on `/inventory`.
 - The event dashboard supports list and calendar views.
+- Event cards and material cards use native collapsible details panels.
 - Keep controls compact and practical.
 - Existing small icon-only buttons should remain compact and accessible with `aria-label`.
 
@@ -43,6 +45,7 @@ tests/
 
 - Events have `starts_at` and `ends_at` internally, but the UI uses date-only ranges.
 - The visible end date is inclusive; internally `ends_at` is stored as the next day at midnight for all-day range handling.
+- If start/end times are provided, the event is timed and `starts_at`/`ends_at` store the exact local range.
 - Event statuses:
   - `planned`
   - `completed`
@@ -52,7 +55,7 @@ tests/
   - `fixed` maps to `Fixiert`
 - `In Planung` does not reserve inventory and can exceed availability.
 - `Fixiert` books inventory and must not exceed availability.
-- Fixed material is only reserved for overlapping active planned fixed events.
+- Fixed material is only reserved for overlapping active planned fixed events; timed events can reuse material when their time ranges do not overlap.
 - Consumables count as reserved while fixed events are planned. On successful completion, assigned consumable quantities are subtracted from the material's total quantity.
 - The inventory page separates fixed material and consumables. Consumables show reserved stock, open used stock, already deducted usage, and available stock.
 - Cancelled events release fixed and consumable reservations.
@@ -63,6 +66,7 @@ tests/
 The Google Calendar panel is on `/settings`.
 
 The connection stores one calendar ID and OAuth credentials in SQLite via `GoogleCalendarConnection`.
+Routes enqueue `GoogleCalendarSyncJob` rows and return immediately. `app/google_calendar_queue.py` processes pending jobs in a background thread.
 
 Event sync fields are on `Event`:
 
