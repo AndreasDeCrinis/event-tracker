@@ -6,6 +6,7 @@
     <title>Event-Job-Planer</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="{{ url_for('static', filename='collapsible-state.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='event-template-loader.js') }}" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -22,6 +23,7 @@
         <nav class="menu-panel" aria-label="Bereiche">
           <a href="{{ url_for('main.index') }}#events">Events</a>
           <a href="{{ url_for('main.index') }}#archive">Job-Archiv</a>
+          <a href="{{ url_for('main.event_templates') }}">Vorlagen</a>
           <a href="{{ url_for('main.inventory') }}">Inventar</a>
           <a href="{{ url_for('main.index') }}#personnel">Personal</a>
           <a href="{{ url_for('main.settings') }}">Einstellungen</a>

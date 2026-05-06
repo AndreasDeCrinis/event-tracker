@@ -116,6 +116,12 @@ class Material(db.Model):
         cascade="all, delete-orphan",
         order_by="EventMaterial.id",
     )
+    template_assignments = db.relationship(
+        "EventTemplateMaterial",
+        back_populates="material",
+        cascade="all, delete-orphan",
+        order_by="EventTemplateMaterial.id",
+    )
 
     __table_args__ = (
         CheckConstraint("total_quantity >= 0", name="material_quantity_non_negative"),
@@ -139,6 +145,48 @@ class Personnel(db.Model):
         back_populates="personnel",
         cascade="all, delete-orphan",
         order_by="EventPersonnel.id",
+    )
+    template_assignments = db.relationship(
+        "EventTemplatePersonnel",
+        back_populates="personnel",
+        cascade="all, delete-orphan",
+        order_by="EventTemplatePersonnel.id",
+    )
+
+
+class EventTemplate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True)
+    event_name = db.Column(db.String(120), nullable=False)
+    duration_days = db.Column(db.Integer, nullable=False, default=1)
+    starts_at_time = db.Column(db.Time, nullable=True)
+    ends_at_time = db.Column(db.Time, nullable=True)
+    location = db.Column(db.String(160), nullable=True)
+    booking_status = db.Column(db.String(20), nullable=False, default=BOOKING_PLANNING, index=True)
+    notes = db.Column(db.Text, nullable=True)
+    sync_to_google_calendar = db.Column(db.Boolean, nullable=False, default=True)
+
+    material_assignments = db.relationship(
+        "EventTemplateMaterial",
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="EventTemplateMaterial.id",
+    )
+    personnel_assignments = db.relationship(
+        "EventTemplatePersonnel",
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="EventTemplatePersonnel.id",
+    )
+
+    __table_args__ = (
+        CheckConstraint("duration_days > 0", name="event_template_duration_positive"),
+        CheckConstraint(f"booking_status in {EVENT_BOOKING_STATUSES}", name="event_template_booking_status_valid"),
+        CheckConstraint(
+            "(starts_at_time IS NULL AND ends_at_time IS NULL) OR "
+            "(starts_at_time IS NOT NULL AND ends_at_time IS NOT NULL)",
+            name="event_template_times_complete",
+        ),
     )
 
 
@@ -201,6 +249,32 @@ class EventPersonnel(db.Model):
     personnel = db.relationship("Personnel", back_populates="assignments")
 
     __table_args__ = (UniqueConstraint("event_id", "personnel_id", name="unique_personnel_per_event"),)
+
+
+class EventTemplateMaterial(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey("event_template.id"), nullable=False)
+    material_id = db.Column(db.Integer, db.ForeignKey("material.id"), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+
+    template = db.relationship("EventTemplate", back_populates="material_assignments")
+    material = db.relationship("Material", back_populates="template_assignments")
+
+    __table_args__ = (
+        UniqueConstraint("template_id", "material_id", name="unique_material_per_event_template"),
+        CheckConstraint("quantity > 0", name="event_template_material_quantity_positive"),
+    )
+
+
+class EventTemplatePersonnel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey("event_template.id"), nullable=False)
+    personnel_id = db.Column(db.Integer, db.ForeignKey("personnel.id"), nullable=False)
+
+    template = db.relationship("EventTemplate", back_populates="personnel_assignments")
+    personnel = db.relationship("Personnel", back_populates="template_assignments")
+
+    __table_args__ = (UniqueConstraint("template_id", "personnel_id", name="unique_personnel_per_event_template"),)
 
 
 def material_counted_statuses(kind):

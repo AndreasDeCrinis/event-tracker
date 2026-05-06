@@ -240,6 +240,12 @@ main {
   max-width: 1180px;
 }
 
+.templates-page {
+  display: grid;
+  gap: 16px;
+  max-width: 1180px;
+}
+
 .inventory-layout {
   display: grid;
   grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
@@ -248,9 +254,32 @@ main {
   min-width: 0;
 }
 
+.templates-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
+}
+
 .inventory-create-panel {
   position: sticky;
   top: 126px;
+}
+
+.template-create-panel {
+  position: sticky;
+  top: 126px;
+}
+
+.template-list {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.template-card {
+  border-top: 4px solid var(--violet);
 }
 
 .inventory-groups {
@@ -356,6 +385,11 @@ main {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+
+.template-create-panel .form-grid,
+.template-edit-form .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .span-2 {
@@ -711,6 +745,11 @@ details[open] > .collapsible-summary .collapse-indicator::before {
   color: var(--red);
 }
 
+.muted-pill {
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
 .inline-form {
   gap: 8px;
 }
@@ -724,6 +763,16 @@ details[open] > .collapsible-summary .collapse-indicator::before {
   align-items: stretch;
   flex-direction: column;
   gap: 8px;
+}
+
+.template-event-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 14px;
 }
 
 .inline-form select {
@@ -1190,12 +1239,14 @@ th {
 @media (max-width: 1120px) {
   .workspace,
   .inventory-layout,
+  .templates-layout,
   .inventory-groups,
   .assignment-grid {
     grid-template-columns: 1fr;
   }
 
-  .inventory-create-panel {
+  .inventory-create-panel,
+  .template-create-panel {
     position: static;
   }
 
@@ -1279,6 +1330,8 @@ th {
 
   .stats-grid,
   .form-grid,
+  .template-create-panel .form-grid,
+  .template-edit-form .form-grid,
   .two-column,
   .material-metrics {
     grid-template-columns: 1fr;

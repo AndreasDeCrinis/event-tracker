@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% from "_icons.html" import action_icon %}
+
+  {% macro template_fields(template=None) %}
+    <div class="form-grid">
+      <label>
+        <span>Vorlagenname</span>
+        <input name="name" value="{{ template.name if template else '' }}" placeholder="Standard-Setup" required>
+      </label>
+      <label>
+        <span>Eventname</span>
+        <input name="event_name" value="{{ template.event_name if template else '' }}" placeholder="Sommerfest" required>
+      </label>
+      <label>
+        <span>Dauer in Tagen</span>
+        <input type="number" name="duration_days" min="1" step="1" value="{{ template.duration_days if template else 1 }}" required>
+      </label>
+      <label>
+        <span>Ort</span>
+        <input name="location" value="{{ template.location if template and template.location else '' }}" placeholder="Optional">
+      </label>
+      <label>
+        <span>Startzeit</span>
+        <input type="time" name="starts_at_time" value="{{ template.starts_at_time.strftime('%H:%M') if template and template.starts_at_time else '' }}">
+      </label>
+      <label>
+        <span>Endzeit</span>
+        <input type="time" name="ends_at_time" value="{{ template.ends_at_time.strftime('%H:%M') if template and template.ends_at_time else '' }}">
+      </label>
+      <label>
+        <span>Planungsstatus</span>
+        <select name="booking_status" required>
+          {% for status in event_booking_statuses %}
+            <option value="{{ status }}" {% if (template and template.booking_status == status) or (not template and status == booking_planning) %}selected{% endif %}>
+              {{ event_booking_status_labels[status] }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="checkbox-label">
+        <input type="hidden" name="sync_to_google_calendar" value="0">
+        <input type="checkbox" name="sync_to_google_calendar" value="1" {% if not template or template.sync_to_google_calendar %}checked{% endif %}>
+        <span>Mit Google Kalender synchronisieren</span>
+      </label>
+      <label class="span-2">
+        <span>Notizen</span>
+        <input name="notes" value="{{ template.notes if template and template.notes else '' }}" placeholder="Optional">
+      </label>
+    </div>
+  {% endmacro %}
+
+  {% macro template_card(template) %}
+    <details id="template-{{ template.id }}" class="event-card template-card" data-collapse-state-key="event-template:{{ template.id }}">
+      <summary class="event-card-header collapsible-summary">
+        <div>
+          <div class="title-row">
+            <h3>{{ template.name }}</h3>
+            <span class="status-pill">{{ event_booking_status_labels[template.booking_status] }}</span>
+            {% if not template.sync_to_google_calendar %}
+              <span class="status-pill muted-pill">Kein Kalender-Sync</span>
+            {% endif %}
+          </div>
+          <div class="meta-row">
+            <span>{{ template.event_name }}</span>
+            <span>{{ template.duration_days }} {{ "Tag" if template.duration_days == 1 else "Tage" }}</span>
+            {% if template.location %}
+              <span>{{ template.location }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <span class="collapse-indicator">Details</span>
+      </summary>
+
+      <div class="collapsible-body event-card-body">
+        <form class="stacked-form template-edit-form" method="post" action="{{ url_for('main.update_event_template', template_id=template.id) }}">
+          {{ template_fields(template) }}
+          <button class="primary-button" type="submit">Vorlage speichern</button>
+        </form>
+
+        <form class="template-event-panel template-event-form" method="post" action="{{ url_for('main.create_event_from_template', template_id=template.id) }}">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Anwenden</p>
+              <h4>Event erstellen</h4>
+            </div>
+          </div>
+          <div class="two-column">
+            <label>
+              <span>Beginn</span>
+              <input type="date" name="starts_on" required>
+            </label>
+            <label>
+              <span>Eventname</span>
+              <input name="event_name" value="{{ template.event_name }}" required>
+            </label>
+          </div>
+          <button class="primary-button" type="submit">Aus Vorlage erstellen</button>
+        </form>
+
+        <div class="assignment-grid">
+          <div class="assignment-panel">
+            <div class="panel-heading">
+              <h4>Material</h4>
+            </div>
+            {% if template.material_assignments %}
+              <ul class="assignment-list">
+                {% for assignment in template.material_assignments %}
+                  <li>
+                    <span>{{ assignment.material.name }}</span>
+                    <form class="quantity-form" method="post" action="{{ url_for('main.update_template_material_quantity', assignment_id=assignment.id) }}">
+                      <label class="sr-only" for="template-material-quantity-{{ assignment.id }}">Menge</label>
+                      <input id="template-material-quantity-{{ assignment.id }}" type="number" name="quantity" min="1" step="1" value="{{ assignment.quantity }}" required>
+                      <span>{{ assignment.material.unit }}</span>
+                      <button class="compact-icon-button save-button" type="submit" aria-label="Menge für {{ assignment.material.name }} speichern" title="Speichern">
+                        {{ action_icon("save") }}
+                      </button>
+                    </form>
+                    <form method="post" action="{{ url_for('main.remove_template_material', assignment_id=assignment.id) }}">
+                      <button class="compact-icon-button remove-button" type="submit" aria-label="{{ assignment.material.name }} entfernen" title="Entfernen">
+                        {{ action_icon("remove") }}
+                      </button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="empty-state">Kein Material zugewiesen.</p>
+            {% endif %}
+
+            <form class="assign-form" method="post" action="{{ url_for('main.assign_template_material', template_id=template.id) }}">
+              <label class="sr-only" for="template-material-{{ template.id }}">Material</label>
+              <select id="template-material-{{ template.id }}" name="material_id" required>
+                <option value="">Material</option>
+                {% for material in materials %}
+                  <option value="{{ material.id }}">{{ material.name }} · {{ material.total_quantity }} {{ material.unit }}</option>
+                {% endfor %}
+              </select>
+              <label class="sr-only" for="template-quantity-{{ template.id }}">Menge</label>
+              <input id="template-quantity-{{ template.id }}" type="number" name="quantity" min="1" step="1" placeholder="Menge" required>
+              <button type="submit">Zuweisen</button>
+            </form>
+          </div>
+
+          <div class="assignment-panel">
+            <div class="panel-heading">
+              <h4>Personal</h4>
+            </div>
+            {% if template.personnel_assignments %}
+              <ul class="assignment-list">
+                {% for assignment in template.personnel_assignments %}
+                  <li>
+                    <span>{{ assignment.personnel.name }}</span>
+                    <strong>{{ assignment.personnel.role }}</strong>
+                    <form method="post" action="{{ url_for('main.remove_template_personnel', assignment_id=assignment.id) }}">
+                      <button class="compact-icon-button remove-button" type="submit" aria-label="{{ assignment.personnel.name }} entfernen" title="Entfernen">
+                        {{ action_icon("remove") }}
+                      </button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="empty-state">Kein Personal zugewiesen.</p>
+            {% endif %}
+
+            <form class="assign-form" method="post" action="{{ url_for('main.assign_template_personnel', template_id=template.id) }}">
+              <label class="sr-only" for="template-personnel-{{ template.id }}">Personal</label>
+              <select id="template-personnel-{{ template.id }}" name="personnel_id" required>
+                <option value="">Person</option>
+                {% for person in people %}
+                  <option value="{{ person.id }}">{{ person.name }} · {{ person.role }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit">Zuweisen</button>
+            </form>
+          </div>
+        </div>
+
+        <form class="delete-form" method="post" action="{{ url_for('main.delete_event_template', template_id=template.id) }}">
+          <button class="danger-button" type="submit">Vorlage löschen</button>
+        </form>
+      </div>
+    </details>
+  {% endmacro %}
+
+  <section id="templates" class="templates-page">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Wiederverwendung</p>
+        <h2>Event-Vorlagen</h2>
+      </div>
+      <a class="ghost-button nav-link-button" href="{{ url_for('main.index') }}#events">Events</a>
+    </div>
+
+    <div class="templates-layout">
+      <section class="tool-panel template-create-panel">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">Neu</p>
+            <h3>Vorlage hinzufügen</h3>
+          </div>
+        </div>
+
+        <form method="post" action="{{ url_for('main.create_event_template') }}" class="stacked-form">
+          {{ template_fields() }}
+          <button class="primary-button" type="submit">Vorlage hinzufügen</button>
+        </form>
+      </section>
+
+      <div class="template-list">
+        {% for template in event_templates %}
+          {{ template_card(template) }}
+        {% else %}
+          <div class="empty-panel">
+            <h3>Keine Vorlagen</h3>
+            <p>Lege links wiederverwendbare Eventdaten an.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+{% endblock %}

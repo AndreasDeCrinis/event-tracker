@@ -19,6 +19,9 @@ from app.models import (
     Event,
     EventMaterial,
     EventPersonnel,
+    EventTemplate,
+    EventTemplateMaterial,
+    EventTemplatePersonnel,
     GoogleCalendarConnection,
     GoogleCalendarSyncJob,
     Material,
@@ -630,10 +633,25 @@ def test_inventory_management_is_on_separate_page(app):
     assert "/materials" in inventory_html
 
 
+def test_event_templates_are_managed_on_dedicated_page(app):
+    client = app.test_client()
+    dashboard_html = client.get("/").data.decode()
+    templates_html = client.get("/templates").data.decode()
+
+    assert '<h2>Event-Vorlagen</h2>' not in dashboard_html
+    assert 'href="/templates"' in dashboard_html
+    assert '<h2>Event-Vorlagen</h2>' in templates_html
+    assert "/templates" in templates_html
+    assert "Vorlage hinzufügen" in templates_html
+    assert "Aus Vorlage erstellen" in templates_html or "Keine Vorlagen" in templates_html
+
+
 def test_event_list_view_is_default(app):
     with app.app_context():
         event = make_event("List view event", date(2999, 1, 10), date(2999, 1, 10))
+        template = EventTemplate(name="Dashboard setup", event_name="Loaded dashboard event", duration_days=1)
         db.session.add(event)
+        db.session.add(template)
         db.session.commit()
         event_id = event.id
 
@@ -648,6 +666,9 @@ def test_event_list_view_is_default(app):
     assert 'class="event-card status-planned " open>' not in html
     assert 'class="event-card-header collapsible-summary"' in html
     assert "List view event" in html
+    assert "Vorlage laden" in html
+    assert "Dashboard setup" in html
+    assert 'src="/static/event-template-loader.js"' in html
     assert "Kalender" in html
     assert 'class="calendar-panel"' not in html
 
@@ -668,6 +689,160 @@ def test_event_calendar_view_renders_month_grid_and_event_links(app):
     assert "Calendar party" in html
     assert "10.01.2999 bis 12.01.2999" in html
     assert f'/?view=list#event-{event_id}' in html
+
+
+def test_event_template_can_create_event_with_assignments(app):
+    with app.app_context():
+        material = Material(name="Template lights", kind=MATERIAL_FIXED, total_quantity=5, unit="pcs")
+        person = Personnel(name="Template tech", role="Tech")
+        db.session.add_all([material, person])
+        db.session.commit()
+        material_id = material.id
+        person_id = person.id
+
+    client = app.test_client()
+    response = client.post(
+        "/templates",
+        data={
+            "name": "Show setup",
+            "event_name": "Template show",
+            "duration_days": "2",
+            "starts_at_time": "10:00",
+            "ends_at_time": "18:00",
+            "location": "Main hall",
+            "booking_status": BOOKING_FIXED,
+            "notes": "Bring checklist",
+            "sync_to_google_calendar": "1",
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        template = EventTemplate.query.filter_by(name="Show setup").one()
+        template_id = template.id
+
+    assert client.post(
+        f"/templates/{template_id}/materials",
+        data={"material_id": material_id, "quantity": "3"},
+    ).status_code == 302
+    assert client.post(
+        f"/templates/{template_id}/personnel",
+        data={"personnel_id": person_id},
+    ).status_code == 302
+
+    response = client.post(
+        f"/templates/{template_id}/events",
+        data={"starts_on": "2999-02-01", "event_name": "Applied show"},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = Event.query.filter_by(name="Applied show").one()
+        assert event.starts_at == datetime(2999, 2, 1, 10, 0)
+        assert event.ends_at == datetime(2999, 2, 2, 18, 0)
+        assert event.location == "Main hall"
+        assert event.booking_status == BOOKING_FIXED
+        assert event.notes == "Bring checklist"
+        assert event.sync_to_google_calendar is True
+        assert [(assignment.material.name, assignment.quantity) for assignment in event.material_assignments] == [
+            ("Template lights", 3)
+        ]
+        assert [assignment.personnel.name for assignment in event.personnel_assignments] == ["Template tech"]
+
+
+def test_dashboard_event_form_can_apply_selected_template_assignments(app):
+    with app.app_context():
+        material = Material(name="Dashboard template lights", kind=MATERIAL_FIXED, total_quantity=4, unit="pcs")
+        person = Personnel(name="Dashboard template tech", role="Tech")
+        template = EventTemplate(
+            name="Dashboard template",
+            event_name="Dashboard loaded show",
+            duration_days=1,
+            booking_status=BOOKING_FIXED,
+        )
+        db.session.add_all([material, person, template])
+        db.session.flush()
+        db.session.add_all(
+            [
+                EventTemplateMaterial(template=template, material=material, quantity=2),
+                EventTemplatePersonnel(template=template, personnel=person),
+            ]
+        )
+        db.session.commit()
+        template_id = template.id
+
+    response = app.test_client().post(
+        "/events",
+        data={
+            "event_template_id": str(template_id),
+            "name": "Dashboard applied show",
+            "starts_on": "2999-02-06",
+            "ends_on": "2999-02-06",
+            "booking_status": BOOKING_FIXED,
+            "sync_to_google_calendar": "1",
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = Event.query.filter_by(name="Dashboard applied show").one()
+        assert [(assignment.material.name, assignment.quantity) for assignment in event.material_assignments] == [
+            ("Dashboard template lights", 2)
+        ]
+        assert [assignment.personnel.name for assignment in event.personnel_assignments] == [
+            "Dashboard template tech"
+        ]
+
+
+def test_event_template_can_disable_google_calendar_sync_for_created_event(app):
+    with app.app_context():
+        connection = GoogleCalendarConnection(id=1, calendar_id="calendar@example.com", credentials_json="{}")
+        template = EventTemplate(
+            name="No calendar template",
+            event_name="No calendar show",
+            duration_days=1,
+            booking_status=BOOKING_PLANNING,
+            sync_to_google_calendar=False,
+        )
+        db.session.add_all([connection, template])
+        db.session.commit()
+        template_id = template.id
+
+    response = app.test_client().post(
+        f"/templates/{template_id}/events",
+        data={"starts_on": "2999-02-03"},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = Event.query.filter_by(name="No calendar show").one()
+        assert event.sync_to_google_calendar is False
+        assert GoogleCalendarSyncJob.query.count() == 0
+
+
+def test_fixed_event_template_checks_material_availability_when_creating_event(app):
+    with app.app_context():
+        material = Material(name="Scarce template gear", kind=MATERIAL_FIXED, total_quantity=1, unit="pcs")
+        template = EventTemplate(
+            name="Scarce setup",
+            event_name="Blocked template show",
+            duration_days=1,
+            booking_status=BOOKING_FIXED,
+        )
+        db.session.add_all([material, template])
+        db.session.flush()
+        db.session.add(EventTemplateMaterial(template=template, material=material, quantity=2))
+        db.session.commit()
+        template_id = template.id
+
+    response = app.test_client().post(
+        f"/templates/{template_id}/events",
+        data={"starts_on": "2999-02-04"},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert Event.query.filter_by(name="Blocked template show").count() == 0
 
 
 def test_fixed_event_material_assignment_quantity_can_be_updated_when_available(app):
@@ -754,6 +929,8 @@ def test_burger_menu_links_to_settings(app):
     html = app.test_client().get("/").data.decode()
 
     assert 'class="menu-button"' in html
+    assert 'href="/templates"' in html
+    assert "Vorlagen" in html
     assert 'href="/settings"' in html
     assert "Einstellungen" in html
 

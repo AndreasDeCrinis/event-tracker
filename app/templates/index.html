@@ -213,46 +213,56 @@
         </nav>
       </div>
 
-      <form class="tool-panel event-form" method="post" action="{{ url_for('main.create_event') }}">
+      <form class="tool-panel event-form" method="post" action="{{ url_for('main.create_event') }}" data-event-template-form>
+        <script type="application/json" data-event-template-options>{{ event_template_options | tojson }}</script>
         <div class="form-grid">
+          <label class="span-2">
+            <span>Vorlage laden</span>
+            <select name="event_template_id" data-event-template-select>
+              <option value="">Ohne Vorlage</option>
+              {% for template in event_templates %}
+                <option value="{{ template.id }}">{{ template.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
           <label>
             <span>Name</span>
-            <input name="name" placeholder="Party" required>
+            <input name="name" placeholder="Party" required data-event-template-field="name">
           </label>
           <label>
             <span>Beginn</span>
-            <input type="date" name="starts_on" required>
+            <input type="date" name="starts_on" required data-event-template-field="starts_on">
           </label>
           <label>
             <span>Startzeit</span>
-            <input type="time" name="starts_at_time">
+            <input type="time" name="starts_at_time" data-event-template-field="starts_at_time">
           </label>
           <label>
             <span>Ende</span>
-            <input type="date" name="ends_on" required>
+            <input type="date" name="ends_on" required data-event-template-field="ends_on">
           </label>
           <label>
             <span>Endzeit</span>
-            <input type="time" name="ends_at_time">
+            <input type="time" name="ends_at_time" data-event-template-field="ends_at_time">
           </label>
           <label>
             <span>Ort</span>
-            <input name="location" placeholder="Optional">
+            <input name="location" placeholder="Optional" data-event-template-field="location">
           </label>
           <label>
             <span>Planungsstatus</span>
-            <select name="booking_status" required>
+            <select name="booking_status" required data-event-template-field="booking_status">
               <option value="{{ booking_planning }}">{{ event_booking_status_labels[booking_planning] }}</option>
               <option value="{{ booking_fixed }}">{{ event_booking_status_labels[booking_fixed] }}</option>
             </select>
           </label>
           <label class="span-2">
             <span>Notizen</span>
-            <input name="notes" placeholder="Optional">
+            <input name="notes" placeholder="Optional" data-event-template-field="notes">
           </label>
           <label class="checkbox-label span-2">
             <input type="hidden" name="sync_to_google_calendar" value="0">
-            <input type="checkbox" name="sync_to_google_calendar" value="1" checked>
+            <input type="checkbox" name="sync_to_google_calendar" value="1" checked data-event-template-field="sync_to_google_calendar">
             <span>Mit Google Kalender synchronisieren</span>
           </label>
         </div>

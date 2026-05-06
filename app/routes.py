@@ -1,5 +1,5 @@
 import calendar as calendar_module
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import secrets
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
@@ -31,6 +31,9 @@ from .models import (
     Event,
     EventMaterial,
     EventPersonnel,
+    EventTemplate,
+    EventTemplateMaterial,
+    EventTemplatePersonnel,
     GoogleCalendarConnection,
     Material,
     Personnel,
@@ -95,6 +98,7 @@ def index():
         event_view = "list"
 
     events = Event.query.order_by(Event.starts_at.asc(), Event.name.asc()).all()
+    event_templates = EventTemplate.query.order_by(EventTemplate.name.asc()).all()
     materials = Material.query.order_by(Material.name.asc()).all()
     people = Personnel.query.order_by(Personnel.name.asc()).all()
     active_events = [event for event in events if not _event_is_archived(event, moment)]
@@ -145,6 +149,8 @@ def index():
         "index.html",
         active_events=active_events,
         archive_events=archive_events,
+        event_templates=event_templates,
+        event_template_options=_event_template_options(event_templates),
         personnel_rows=personnel_rows,
         event_material_options=event_material_options,
         event_personnel_options=event_personnel_options,
@@ -174,6 +180,14 @@ def inventory():
     )
 
 
+@bp.get("/templates")
+def event_templates():
+    return render_template(
+        "event_templates.html",
+        **_event_template_context(),
+    )
+
+
 @bp.get("/settings")
 def settings():
     return render_template(
@@ -184,6 +198,10 @@ def settings():
 
 @bp.post("/events")
 def create_event():
+    template = _selected_event_template()
+    if request.form.get("event_template_id") and not template:
+        return _redirect("events")
+
     name = _required_text("name", "Event-Name")
     starts_on_value = _required_text("starts_on", "Beginn")
     ends_on_value = _required_text("ends_on", "Ende")
@@ -224,11 +242,187 @@ def create_event():
     )
     db.session.add(event)
     db.session.flush()
+
+    if template:
+        assignment_error = _copy_template_assignments_to_event(template, event)
+        if assignment_error:
+            db.session.rollback()
+            flash(assignment_error, "error")
+            return _redirect("events")
+
     google_sync_queued = _queue_event_sync_if_google_connected(event)
     db.session.commit()
     _wake_google_sync_worker(google_sync_queued)
     flash(f"{event.name} wurde hinzugefügt.", "success")
     return _redirect("events")
+
+
+@bp.post("/templates")
+def create_event_template():
+    template_values = _event_template_form_values()
+    if not template_values:
+        return _templates_redirect()
+
+    template = EventTemplate(**template_values)
+    db.session.add(template)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash("Diese Vorlage existiert bereits.", "error")
+        return _templates_redirect()
+
+    flash(f"Vorlage {template.name} wurde hinzugefügt.", "success")
+    return _templates_redirect("template-" + str(template.id))
+
+
+@bp.post("/templates/<int:template_id>")
+def update_event_template(template_id):
+    template = EventTemplate.query.get_or_404(template_id)
+    template_values = _event_template_form_values()
+    if not template_values:
+        return _templates_redirect("template-" + str(template.id))
+
+    for field, value in template_values.items():
+        setattr(template, field, value)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash("Diese Vorlage existiert bereits.", "error")
+        return _templates_redirect("template-" + str(template.id))
+
+    flash(f"Vorlage {template.name} wurde aktualisiert.", "success")
+    return _templates_redirect("template-" + str(template.id))
+
+
+@bp.post("/templates/<int:template_id>/events")
+def create_event_from_template(template_id):
+    template = EventTemplate.query.get_or_404(template_id)
+    starts_on_value = _required_text("starts_on", "Beginn")
+    event_name = _optional_text("event_name") or template.event_name
+
+    if not starts_on_value:
+        return _templates_redirect("template-" + str(template.id))
+
+    try:
+        starts_on = _parse_date_local(starts_on_value)
+    except ValueError:
+        flash("Bitte ein gültiges Beginndatum verwenden.", "error")
+        return _templates_redirect("template-" + str(template.id))
+
+    try:
+        starts_at, ends_at = _event_datetimes_from_template(template, starts_on)
+    except ValueError as error:
+        flash(str(error), "error")
+        return _templates_redirect("template-" + str(template.id))
+
+    event = Event(
+        name=event_name,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        location=template.location,
+        booking_status=template.booking_status,
+        notes=template.notes,
+        sync_to_google_calendar=template.sync_to_google_calendar,
+    )
+    db.session.add(event)
+    db.session.flush()
+
+    assignment_error = _copy_template_assignments_to_event(template, event)
+    if assignment_error:
+        db.session.rollback()
+        flash(assignment_error, "error")
+        return _templates_redirect("template-" + str(template.id))
+
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
+    db.session.commit()
+    _wake_google_sync_worker(google_sync_queued)
+    flash(f"{event.name} wurde aus der Vorlage erstellt.", "success")
+    return _redirect("event-" + str(event.id))
+
+
+@bp.post("/templates/<int:template_id>/delete")
+def delete_event_template(template_id):
+    template = EventTemplate.query.get_or_404(template_id)
+    db.session.delete(template)
+    db.session.commit()
+    flash(f"Vorlage {template.name} wurde entfernt.", "success")
+    return _templates_redirect()
+
+
+@bp.post("/templates/<int:template_id>/materials")
+def assign_template_material(template_id):
+    template = EventTemplate.query.get_or_404(template_id)
+    material = Material.query.get_or_404(request.form.get("material_id", type=int))
+    quantity = _positive_int("quantity", "Menge")
+
+    if quantity is None:
+        return _templates_redirect("template-" + str(template.id))
+
+    assignment = EventTemplateMaterial.query.filter_by(template_id=template.id, material_id=material.id).first()
+    if assignment:
+        assignment.quantity += quantity
+    else:
+        db.session.add(EventTemplateMaterial(template=template, material=material, quantity=quantity))
+
+    db.session.commit()
+    flash(f"{quantity} {material.unit} {material.name} wurden der Vorlage zugewiesen.", "success")
+    return _templates_redirect("template-" + str(template.id))
+
+
+@bp.post("/template-materials/<int:assignment_id>/quantity")
+def update_template_material_quantity(assignment_id):
+    assignment = EventTemplateMaterial.query.get_or_404(assignment_id)
+    quantity = _positive_int("quantity", "Menge")
+
+    if quantity is None:
+        return _templates_redirect("template-" + str(assignment.template_id))
+
+    assignment.quantity = quantity
+    db.session.commit()
+    flash(f"Menge von {assignment.material.name} wurde aktualisiert.", "success")
+    return _templates_redirect("template-" + str(assignment.template_id))
+
+
+@bp.post("/template-materials/<int:assignment_id>/delete")
+def remove_template_material(assignment_id):
+    assignment = EventTemplateMaterial.query.get_or_404(assignment_id)
+    template_id = assignment.template_id
+    material_name = assignment.material.name
+    db.session.delete(assignment)
+    db.session.commit()
+    flash(f"Zuweisung von {material_name} wurde entfernt.", "success")
+    return _templates_redirect("template-" + str(template_id))
+
+
+@bp.post("/templates/<int:template_id>/personnel")
+def assign_template_personnel(template_id):
+    template = EventTemplate.query.get_or_404(template_id)
+    person = Personnel.query.get_or_404(request.form.get("personnel_id", type=int))
+
+    existing = EventTemplatePersonnel.query.filter_by(template_id=template.id, personnel_id=person.id).first()
+    if existing:
+        flash(f"{person.name} ist der Vorlage bereits zugewiesen.", "error")
+        return _templates_redirect("template-" + str(template.id))
+
+    db.session.add(EventTemplatePersonnel(template=template, personnel=person))
+    db.session.commit()
+    flash(f"{person.name} wurde der Vorlage zugewiesen.", "success")
+    return _templates_redirect("template-" + str(template.id))
+
+
+@bp.post("/template-personnel/<int:assignment_id>/delete")
+def remove_template_personnel(assignment_id):
+    assignment = EventTemplatePersonnel.query.get_or_404(assignment_id)
+    template_id = assignment.template_id
+    person_name = assignment.personnel.name
+    db.session.delete(assignment)
+    db.session.commit()
+    flash(f"Zuweisung von {person_name} wurde entfernt.", "success")
+    return _templates_redirect("template-" + str(template_id))
 
 
 @bp.post("/events/<int:event_id>/booking-status")
@@ -682,6 +876,87 @@ def _event_datetimes(starts_on, ends_on, starts_at_time_value=None, ends_at_time
     return datetime.combine(starts_on, time.min), datetime.combine(ends_on + timedelta(days=1), time.min)
 
 
+def _event_template_form_values():
+    name = _required_text("name", "Vorlagenname")
+    event_name = _required_text("event_name", "Eventname")
+    duration_days = _positive_int("duration_days", "Dauer")
+    starts_at_time_value = _optional_text("starts_at_time")
+    ends_at_time_value = _optional_text("ends_at_time")
+    booking_status = request.form.get("booking_status", BOOKING_PLANNING)
+
+    if not all((name, event_name)) or duration_days is None:
+        return None
+
+    if booking_status not in EVENT_BOOKING_STATUSES:
+        flash("Bitte In Planung oder Fixiert wählen.", "error")
+        return None
+
+    validation_start = date(2000, 1, 1)
+    validation_end = validation_start + timedelta(days=duration_days - 1)
+    try:
+        _event_datetimes(validation_start, validation_end, starts_at_time_value, ends_at_time_value)
+    except ValueError as error:
+        flash(str(error), "error")
+        return None
+
+    starts_at_time = _parse_time_local(starts_at_time_value) if starts_at_time_value else None
+    ends_at_time = _parse_time_local(ends_at_time_value) if ends_at_time_value else None
+
+    return {
+        "name": name,
+        "event_name": event_name,
+        "duration_days": duration_days,
+        "starts_at_time": starts_at_time,
+        "ends_at_time": ends_at_time,
+        "location": _optional_text("location"),
+        "booking_status": booking_status,
+        "notes": _optional_text("notes"),
+        "sync_to_google_calendar": _form_checkbox_checked("sync_to_google_calendar", default=True),
+    }
+
+
+def _event_datetimes_from_template(template, starts_on):
+    ends_on = starts_on + timedelta(days=template.duration_days - 1)
+    starts_at_time_value = template.starts_at_time.strftime("%H:%M") if template.starts_at_time else None
+    ends_at_time_value = template.ends_at_time.strftime("%H:%M") if template.ends_at_time else None
+    return _event_datetimes(starts_on, ends_on, starts_at_time_value, ends_at_time_value)
+
+
+def _copy_template_assignments_to_event(template, event):
+    for assignment in template.material_assignments:
+        if event.booking_status == BOOKING_FIXED:
+            assignable = material_assignable_quantity(assignment.material, event)
+            if assignment.quantity > assignable:
+                return (
+                    f"Event kann nicht aus der Vorlage erstellt werden. Von {assignment.material.name} "
+                    f"sind nur {assignable} {assignment.material.unit} verfügbar."
+                )
+        db.session.add(EventMaterial(event=event, material=assignment.material, quantity=assignment.quantity))
+
+    for assignment in template.personnel_assignments:
+        if personnel_has_conflict(assignment.personnel, event):
+            return (
+                f"Event kann nicht aus der Vorlage erstellt werden. "
+                f"{assignment.personnel.name} ist in diesem Zeitraum bereits zugewiesen."
+            )
+        db.session.add(EventPersonnel(event=event, personnel=assignment.personnel))
+
+    return None
+
+
+def _selected_event_template():
+    template_id = request.form.get("event_template_id", type=int)
+    if not template_id:
+        return None
+
+    template = db.session.get(EventTemplate, template_id)
+    if not template:
+        flash("Bitte eine gültige Vorlage wählen.", "error")
+        return None
+
+    return template
+
+
 def _redirect(anchor):
     return redirect(url_for("main.index") + f"#{anchor}")
 
@@ -692,6 +967,10 @@ def _settings_redirect(anchor):
 
 def _inventory_redirect():
     return redirect(url_for("main.inventory") + "#inventory")
+
+
+def _templates_redirect(anchor="templates"):
+    return redirect(url_for("main.event_templates") + f"#{anchor}")
 
 
 def _event_calendar_context(events):
@@ -769,6 +1048,35 @@ def _inventory_template_context():
         "material_fixed": MATERIAL_FIXED,
         "material_consumable": MATERIAL_CONSUMABLE,
     }
+
+
+def _event_template_context():
+    return {
+        "event_templates": EventTemplate.query.order_by(EventTemplate.name.asc()).all(),
+        "materials": Material.query.order_by(Material.name.asc()).all(),
+        "people": Personnel.query.order_by(Personnel.name.asc()).all(),
+        "event_booking_statuses": EVENT_BOOKING_STATUSES,
+        "event_booking_status_labels": EVENT_BOOKING_STATUS_LABELS,
+        "booking_planning": BOOKING_PLANNING,
+        "booking_fixed": BOOKING_FIXED,
+    }
+
+
+def _event_template_options(event_templates):
+    return [
+        {
+            "id": template.id,
+            "eventName": template.event_name,
+            "durationDays": template.duration_days,
+            "startsAtTime": template.starts_at_time.strftime("%H:%M") if template.starts_at_time else "",
+            "endsAtTime": template.ends_at_time.strftime("%H:%M") if template.ends_at_time else "",
+            "location": template.location or "",
+            "bookingStatus": template.booking_status,
+            "notes": template.notes or "",
+            "syncToGoogleCalendar": template.sync_to_google_calendar,
+        }
+        for template in event_templates
+    ]
 
 
 def _shift_month(year, month, delta):
