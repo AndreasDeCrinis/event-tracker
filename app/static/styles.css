@@ -961,6 +961,16 @@ details[open] > .collapsible-summary .collapse-indicator::before {
   border-left-color: var(--gold);
 }
 
+.material-item.material-shortage {
+  border-color: rgba(180, 35, 24, 0.45);
+  border-left-color: var(--red);
+  background: rgba(180, 35, 24, 0.04);
+}
+
+.material-item.material-shortage .material-item-header {
+  background: rgba(180, 35, 24, 0.06);
+}
+
 .material-item-header {
   justify-content: space-between;
   gap: 8px;
@@ -986,6 +996,13 @@ details[open] > .collapsible-summary .collapse-indicator::before {
   min-width: 0;
 }
 
+.material-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
 .material-title strong {
   max-width: 100%;
   overflow-wrap: anywhere;
@@ -1006,6 +1023,17 @@ details[open] > .collapsible-summary .collapse-indicator::before {
 .material-kind-consumable .kind-chip {
   background: rgba(183, 121, 31, 0.12);
   color: #7a4b12;
+}
+
+.shortage-chip {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  background: rgba(180, 35, 24, 0.12);
+  color: var(--red);
+  padding: 3px 8px;
+  font-size: 0.74rem;
+  font-weight: 850;
 }
 
 .inventory-quantity-form {

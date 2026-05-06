@@ -614,7 +614,7 @@ def test_inventory_renders_material_groups_and_consumable_usage_metrics(app):
     assert "Verbraucht offen" in html
     assert "20 Stk." in html
     assert "80 Stk." in html
-    assert '<details class="material-item material-kind-fixed"' in html
+    assert 'class="material-item material-kind-fixed' in html
     assert 'id="material-' in html
     assert 'data-collapse-state-key="material:' in html
     assert '<details class="material-item material-kind-fixed" open>' not in html
@@ -649,6 +649,8 @@ def test_inventory_warns_when_planned_material_exceeds_stock(app):
 
     html = app.test_client().get("/inventory").data.decode()
 
+    assert "material-shortage" in html
+    assert "1 pcs fehlen</span>" in html
     assert "Geplante Menge übersteigt den Bestand." in html
     assert "4 pcs geplant" in html
     assert "3 pcs im Bestand" in html

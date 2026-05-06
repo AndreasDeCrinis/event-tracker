@@ -6,11 +6,16 @@
   {% macro material_card(row) %}
     {% set material = row.item %}
     {% set is_consumable = material.kind == material_consumable %}
-    <details class="material-item material-kind-{{ material.kind }}" id="material-{{ material.id }}" data-collapse-state-key="material:{{ material.id }}">
+    <details class="material-item material-kind-{{ material.kind }} {% if row.planned_shortage > 0 %}material-shortage{% endif %}" id="material-{{ material.id }}" data-collapse-state-key="material:{{ material.id }}">
       <summary class="material-item-header collapsible-summary">
         <div class="material-title">
           <strong>{{ material.name }}</strong>
-          <span class="kind-chip">{{ material_kind_labels[material.kind] }}</span>
+          <div class="material-chips">
+            <span class="kind-chip">{{ material_kind_labels[material.kind] }}</span>
+            {% if row.planned_shortage > 0 %}
+              <span class="shortage-chip">{{ row.planned_shortage }} {{ material.unit }} fehlen</span>
+            {% endif %}
+          </div>
         </div>
         <span class="collapse-indicator">Details</span>
       </summary>
