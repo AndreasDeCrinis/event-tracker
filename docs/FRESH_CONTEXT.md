@@ -129,6 +129,7 @@ Google Calendar routes redirect back to `/settings#google-calendar`.
 ## Migrations
 
 This project currently uses lightweight startup migrations in `app/__init__.py`, not Alembic.
+SQLite file databases are configured with WAL mode and a busy timeout during app startup to reduce lock conflicts between web requests and the Google Calendar background worker.
 
 Existing migrations handle:
 
@@ -153,7 +154,7 @@ docker compose run --rm web pytest
 Current expected result:
 
 ```text
-44 passed
+45 passed
 ```
 
 Known warnings:

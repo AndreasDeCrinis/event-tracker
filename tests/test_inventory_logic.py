@@ -1,6 +1,7 @@
 from datetime import date, datetime, time, timedelta
 
 import pytest
+from sqlalchemy import text
 
 from app import create_app, db
 from app import routes as routes_module
@@ -32,7 +33,7 @@ from app.models import (
     personnel_is_available,
 )
 from app.google_calendar import google_event_body, sync_event_to_google
-from app.google_calendar_queue import process_pending_google_calendar_jobs
+from app.google_calendar_queue import process_pending_google_calendar_jobs, queue_google_event_sync
 
 
 def make_event(name, starts_on, ends_on, location="Hall", booking_status=BOOKING_FIXED):
@@ -891,6 +892,28 @@ def test_event_save_queues_google_sync_without_calling_google(app, monkeypatch):
         assert job.action == GOOGLE_SYNC_ACTION_UPSERT
         assert job.status == GOOGLE_SYNC_STATUS_PENDING
         assert job.event_id == event.id
+
+
+def test_google_sync_queue_does_not_autoflush_pending_event_changes(app):
+    with app.app_context():
+        connection = GoogleCalendarConnection(id=1, calendar_id="calendar@example.com", credentials_json="{}")
+        event = make_event("No autoflush show", date(2999, 12, 2), date(2999, 12, 2))
+        db.session.add_all([connection, event])
+        db.session.commit()
+        event_id = event.id
+
+        event.booking_status = BOOKING_PLANNING
+
+        assert queue_google_event_sync(event)
+
+        with db.session.no_autoflush:
+            stored_status = db.session.execute(
+                text("SELECT booking_status FROM event WHERE id = :event_id"),
+                {"event_id": event_id},
+            ).scalar_one()
+        assert stored_status == BOOKING_FIXED
+
+        db.session.commit()
 
 
 def test_google_calendar_queue_worker_processes_pending_event_sync(app, monkeypatch):

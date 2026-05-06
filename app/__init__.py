@@ -3,7 +3,7 @@ import os
 
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect, text
+from sqlalchemy import event, inspect, text
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 
@@ -42,6 +42,7 @@ def create_app(config=None):
     app.register_blueprint(bp)
 
     with app.app_context():
+        _configure_sqlite_pragmas(app.config["SQLALCHEMY_DATABASE_URI"])
         _migrate_database()
         db.create_all()
 
@@ -60,6 +61,25 @@ def _ensure_sqlite_directory(database_url):
     database_path = database_url.replace("sqlite:///", "", 1)
     if database_path:
         Path(database_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+
+
+def _configure_sqlite_pragmas(database_url):
+    if not database_url.startswith("sqlite"):
+        return
+
+    def set_sqlite_pragmas(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA busy_timeout=10000")
+        if database_url != "sqlite:///:memory:":
+            cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.close()
+
+    event.listen(db.engine, "connect", set_sqlite_pragmas)
+
+    with db.engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA busy_timeout=10000")
+        if database_url != "sqlite:///:memory:":
+            connection.exec_driver_sql("PRAGMA journal_mode=WAL")
 
 
 def _apply_proxy_fix(app):

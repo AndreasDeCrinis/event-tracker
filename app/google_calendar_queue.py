@@ -19,68 +19,74 @@ from .models import (
 
 MAX_SYNC_ATTEMPTS = 3
 WORKER_INTERVAL_SECONDS = 10
+INITIAL_SYNC_DELAY_SECONDS = 2
 
 _worker_started = False
 _worker_wakeup = threading.Event()
 
 
 def queue_google_event_sync(event, connection=None):
-    connection = connection or _google_calendar_connection()
-    if not _connection_can_sync(connection):
-        return False
+    with db.session.no_autoflush:
+        connection = connection or _google_calendar_connection()
+        if not _connection_can_sync(connection):
+            return False
 
-    existing = GoogleCalendarSyncJob.query.filter_by(
-        action=GOOGLE_SYNC_ACTION_UPSERT,
-        event_id=event.id,
-        status=GOOGLE_SYNC_STATUS_PENDING,
-    ).first()
-
-    if existing:
-        existing.event_name = event.name
-        existing.google_event_id = event.google_event_id
-        existing.google_calendar_id = event.google_calendar_id
-        existing.last_error = None
-        existing.run_after = None
-        existing.updated_at = _utc_now()
-        return True
-
-    db.session.add(
-        GoogleCalendarSyncJob(
+        run_after = _delayed_run_after()
+        existing = GoogleCalendarSyncJob.query.filter_by(
             action=GOOGLE_SYNC_ACTION_UPSERT,
             event_id=event.id,
-            google_event_id=event.google_event_id,
-            google_calendar_id=event.google_calendar_id,
-            event_name=event.name,
             status=GOOGLE_SYNC_STATUS_PENDING,
+        ).first()
+
+        if existing:
+            existing.event_name = event.name
+            existing.google_event_id = event.google_event_id
+            existing.google_calendar_id = event.google_calendar_id
+            existing.last_error = None
+            existing.run_after = run_after
+            existing.updated_at = _utc_now()
+            return True
+
+        db.session.add(
+            GoogleCalendarSyncJob(
+                action=GOOGLE_SYNC_ACTION_UPSERT,
+                event_id=event.id,
+                google_event_id=event.google_event_id,
+                google_calendar_id=event.google_calendar_id,
+                event_name=event.name,
+                status=GOOGLE_SYNC_STATUS_PENDING,
+                run_after=run_after,
+            )
         )
-    )
     return True
 
 
 def queue_google_event_deletion(event, connection=None):
-    connection = connection or _google_calendar_connection()
-    if not _connection_can_sync(connection):
-        return False
+    with db.session.no_autoflush:
+        connection = connection or _google_calendar_connection()
+        if not _connection_can_sync(connection):
+            return False
 
-    GoogleCalendarSyncJob.query.filter_by(
-        action=GOOGLE_SYNC_ACTION_UPSERT,
-        event_id=event.id,
-        status=GOOGLE_SYNC_STATUS_PENDING,
-    ).delete()
-
-    if not event.google_event_id:
-        return False
-
-    db.session.add(
-        GoogleCalendarSyncJob(
-            action=GOOGLE_SYNC_ACTION_DELETE,
+        GoogleCalendarSyncJob.query.filter_by(
+            action=GOOGLE_SYNC_ACTION_UPSERT,
             event_id=event.id,
-            google_event_id=event.google_event_id,
-            google_calendar_id=event.google_calendar_id or connection.calendar_id,
-            event_name=event.name,
             status=GOOGLE_SYNC_STATUS_PENDING,
+        ).delete()
+
+        if not event.google_event_id:
+            return False
+
+        db.session.add(
+            GoogleCalendarSyncJob(
+                action=GOOGLE_SYNC_ACTION_DELETE,
+                event_id=event.id,
+                google_event_id=event.google_event_id,
+                google_calendar_id=event.google_calendar_id or connection.calendar_id,
+                event_name=event.name,
+                status=GOOGLE_SYNC_STATUS_PENDING,
+                run_after=_delayed_run_after(),
+            )
         )
-    )
     return True
 
 
@@ -228,3 +234,7 @@ def _google_calendar_connection():
 
 def _utc_now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _delayed_run_after():
+    return _utc_now() + timedelta(seconds=INITIAL_SYNC_DELAY_SECONDS)
