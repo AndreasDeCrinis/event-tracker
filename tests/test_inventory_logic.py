@@ -511,6 +511,7 @@ def test_material_total_quantity_can_be_updated(app):
     )
 
     assert response.status_code == 302
+    assert response.headers["Location"] == "/inventory#inventory"
     with app.app_context():
         assert db.session.get(Material, material_id).total_quantity == 8
 
@@ -525,14 +526,58 @@ def test_inventory_renders_material_groups_and_consumable_usage_metrics(app):
         db.session.add(EventMaterial(event=event, material=consumable, quantity=20))
         db.session.commit()
 
-    html = app.test_client().get("/").data.decode()
+    html = app.test_client().get("/inventory").data.decode()
 
+    assert "<h2>Inventar</h2>" in html
     assert "Festes Material" in html
     assert "Verbrauchsmaterial" in html
     assert "Verbraucht offen" in html
     assert "20 Stk." in html
     assert "80 Stk." in html
-    assert "<table" not in html[html.index("<h2>Inventar</h2>") : html.index("<h2>Personal</h2>")]
+    assert "<table" not in html
+
+
+def test_inventory_management_is_on_separate_page(app):
+    client = app.test_client()
+    dashboard_html = client.get("/").data.decode()
+    inventory_html = client.get("/inventory").data.decode()
+
+    assert '<h2>Inventar</h2>' not in dashboard_html
+    assert 'href="/inventory"' in dashboard_html
+    assert '<h2>Inventar</h2>' in inventory_html
+    assert "/materials" in inventory_html
+
+
+def test_event_list_view_is_default(app):
+    with app.app_context():
+        event = make_event("List view event", date(2999, 1, 10), date(2999, 1, 10))
+        db.session.add(event)
+        db.session.commit()
+
+    html = app.test_client().get("/").data.decode()
+
+    assert 'class="event-list"' in html
+    assert "List view event" in html
+    assert "Kalender" in html
+    assert 'class="calendar-panel"' not in html
+
+
+def test_event_calendar_view_renders_month_grid_and_event_links(app):
+    with app.app_context():
+        event = make_event("Calendar party", date(2999, 1, 10), date(2999, 1, 12))
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
+
+    html = app.test_client().get("/?view=calendar&month=2999-01").data.decode()
+
+    assert 'class="calendar-panel"' in html
+    assert "Januar 2999" in html
+    assert "Mo" in html
+    assert "So" in html
+    assert "Calendar party" in html
+    assert "10.01.2999 bis 12.01.2999" in html
+    assert f'/?view=list#event-{event_id}' in html
 
 
 def test_fixed_event_material_assignment_quantity_can_be_updated_when_available(app):

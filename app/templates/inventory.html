@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% from "_icons.html" import action_icon %}
+
+  {% macro material_card(row) %}
+    {% set material = row.item %}
+    {% set is_consumable = material.kind == material_consumable %}
+    <article class="material-item material-kind-{{ material.kind }}">
+      <div class="material-item-header">
+        <div class="material-title">
+          <strong>{{ material.name }}</strong>
+          <span class="kind-chip">{{ material_kind_labels[material.kind] }}</span>
+        </div>
+        <form method="post" action="{{ url_for('main.delete_material', material_id=material.id) }}">
+          <button class="compact-icon-button remove-button" type="submit" aria-label="{{ material.name }} löschen" title="Entfernen">
+            {{ action_icon("remove") }}
+          </button>
+        </form>
+      </div>
+
+      <form class="quantity-form inventory-quantity-form" method="post" action="{{ url_for('main.update_material_quantity', material_id=material.id) }}">
+        <label for="material-total-{{ material.id }}">Gesamtbestand</label>
+        <input id="material-total-{{ material.id }}" type="number" name="total_quantity" min="0" step="1" value="{{ material.total_quantity }}" required>
+        <span>{{ material.unit }}</span>
+        <button class="compact-icon-button save-button" type="submit" aria-label="Gesamtmenge für {{ material.name }} speichern" title="Speichern">
+          {{ action_icon("save") }}
+        </button>
+      </form>
+
+      <dl class="material-metrics">
+        <div class="metric available-metric">
+          <dt>Frei</dt>
+          <dd>
+            <span class="availability {% if row.available == 0 and material.total_quantity > 0 %}empty{% endif %}">
+              {{ row.available }} {{ material.unit }}
+            </span>
+          </dd>
+        </div>
+        <div class="metric">
+          <dt>{{ "Reserviert" if is_consumable else "Gebunden" }}</dt>
+          <dd>{{ row.reserved }} {{ material.unit }}</dd>
+        </div>
+        {% if is_consumable %}
+          <div class="metric {% if row.open_used > 0 %}attention-metric{% endif %}">
+            <dt>Verbraucht offen</dt>
+            <dd>{{ row.open_used }} {{ material.unit }}</dd>
+          </div>
+          <div class="metric">
+            <dt>Abgezogen</dt>
+            <dd>{{ row.deducted_used }} {{ material.unit }}</dd>
+          </div>
+        {% endif %}
+      </dl>
+    </article>
+  {% endmacro %}
+
+  <section id="inventory" class="inventory-page">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Bestand</p>
+        <h2>Inventar</h2>
+      </div>
+      <a class="ghost-button nav-link-button" href="{{ url_for('main.index') }}#events">Events</a>
+    </div>
+
+    <div class="inventory-layout">
+      <section class="tool-panel inventory-create-panel">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">Neu</p>
+            <h3>Material hinzufügen</h3>
+          </div>
+        </div>
+
+        <form method="post" action="{{ url_for('main.create_material') }}" class="stacked-form">
+          <label>
+            <span>Name</span>
+            <input name="name" placeholder="Flammenwerfer" required>
+          </label>
+          <div class="two-column">
+            <label>
+              <span>Art</span>
+              <select name="kind" required>
+                <option value="{{ material_fixed }}">{{ material_kind_labels[material_fixed] }}</option>
+                <option value="{{ material_consumable }}">{{ material_kind_labels[material_consumable] }}</option>
+              </select>
+            </label>
+            <label>
+              <span>Einheit</span>
+              <input name="unit" value="Stk." required>
+            </label>
+          </div>
+          <label>
+            <span>Gesamtmenge</span>
+            <input type="number" name="total_quantity" min="0" step="1" value="1" required>
+          </label>
+          <button class="primary-button" type="submit">Material hinzufügen</button>
+        </form>
+      </section>
+
+      <div class="material-groups inventory-groups">
+        <section class="material-group inventory-group-fixed">
+          <div class="material-group-heading">
+            <div>
+              <p class="eyebrow">Mehrweg</p>
+              <h3>Festes Material</h3>
+            </div>
+            <span>{{ fixed_material_rows | length }}</span>
+          </div>
+          <div class="material-list">
+            {% for row in fixed_material_rows %}
+              {{ material_card(row) }}
+            {% else %}
+              <p class="empty-state">Kein festes Material.</p>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="material-group inventory-group-consumable">
+          <div class="material-group-heading">
+            <div>
+              <p class="eyebrow">Verbrauch</p>
+              <h3>Verbrauchsmaterial</h3>
+            </div>
+            <span>{{ consumable_material_rows | length }}</span>
+          </div>
+          <div class="material-list">
+            {% for row in consumable_material_rows %}
+              {{ material_card(row) }}
+            {% else %}
+              <p class="empty-state">Kein Verbrauchsmaterial.</p>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+{% endblock %}

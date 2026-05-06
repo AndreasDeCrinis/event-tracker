@@ -1,68 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-  {% macro action_icon(name) %}
-    {% if name == "save" %}
-      <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
-        <path d="M20 6 9 17l-5-5"></path>
-      </svg>
-    {% elif name == "remove" %}
-      <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
-        <path d="M18 6 6 18"></path>
-        <path d="m6 6 12 12"></path>
-      </svg>
-    {% endif %}
-  {% endmacro %}
-
-  {% macro material_card(row) %}
-    {% set material = row.item %}
-    {% set is_consumable = material.kind == material_consumable %}
-    <article class="material-item material-kind-{{ material.kind }}">
-      <div class="material-item-header">
-        <div class="material-title">
-          <strong>{{ material.name }}</strong>
-          <span class="kind-chip">{{ material_kind_labels[material.kind] }}</span>
-        </div>
-        <form method="post" action="{{ url_for('main.delete_material', material_id=material.id) }}">
-          <button class="icon-button" type="submit" aria-label="{{ material.name }} löschen">×</button>
-        </form>
-      </div>
-
-      <form class="quantity-form inventory-quantity-form" method="post" action="{{ url_for('main.update_material_quantity', material_id=material.id) }}">
-        <label for="material-total-{{ material.id }}">Gesamtbestand</label>
-        <input id="material-total-{{ material.id }}" type="number" name="total_quantity" min="0" step="1" value="{{ material.total_quantity }}" required>
-        <span>{{ material.unit }}</span>
-        <button class="compact-icon-button save-button" type="submit" aria-label="Gesamtmenge für {{ material.name }} speichern" title="Speichern">
-          {{ action_icon("save") }}
-        </button>
-      </form>
-
-      <dl class="material-metrics">
-        <div class="metric available-metric">
-          <dt>Frei</dt>
-          <dd>
-            <span class="availability {% if row.available == 0 and material.total_quantity > 0 %}empty{% endif %}">
-              {{ row.available }} {{ material.unit }}
-            </span>
-          </dd>
-        </div>
-        <div class="metric">
-          <dt>{{ "Reserviert" if is_consumable else "Gebunden" }}</dt>
-          <dd>{{ row.reserved }} {{ material.unit }}</dd>
-        </div>
-        {% if is_consumable %}
-          <div class="metric {% if row.open_used > 0 %}attention-metric{% endif %}">
-            <dt>Verbraucht offen</dt>
-            <dd>{{ row.open_used }} {{ material.unit }}</dd>
-          </div>
-          <div class="metric">
-            <dt>Abgezogen</dt>
-            <dd>{{ row.deducted_used }} {{ material.unit }}</dd>
-          </div>
-        {% endif %}
-      </dl>
-    </article>
-  {% endmacro %}
+  {% from "_icons.html" import action_icon %}
 
   <section class="stats-grid" aria-label="Überblick">
     <div class="stat-panel accent-teal">
@@ -254,6 +193,10 @@
           <p class="eyebrow">Aufträge</p>
           <h2>Aktive Events</h2>
         </div>
+        <nav class="view-switch" aria-label="Eventansicht">
+          <a href="{{ url_for('main.index', view='list') }}#events" class="{% if event_view == 'list' %}active{% endif %}">Liste</a>
+          <a href="{{ url_for('main.index', view='calendar', month=event_calendar.selected_month) }}#events" class="{% if event_view == 'calendar' %}active{% endif %}">Kalender</a>
+        </nav>
       </div>
 
       <form class="tool-panel event-form" method="post" action="{{ url_for('main.create_event') }}">
@@ -289,16 +232,55 @@
         <button class="primary-button" type="submit">Event hinzufügen</button>
       </form>
 
-      <div class="event-list">
-        {% for event in active_events %}
-          {{ event_card(event) }}
-        {% else %}
-          <div class="empty-panel">
-            <h3>Keine aktiven Events</h3>
-            <p>Lege oben den nächsten Auftrag an oder prüfe das Archiv für abgeschlossene und abgesagte Jobs.</p>
+      {% if event_view == "calendar" %}
+        <section class="calendar-panel" aria-label="Kalenderansicht aktiver Events">
+          <div class="calendar-toolbar">
+            <a class="ghost-button calendar-nav-button" href="{{ url_for('main.index', view='calendar', month=event_calendar.previous_month) }}#events" aria-label="Vorheriger Monat">‹</a>
+            <h3>{{ event_calendar.month_label }}</h3>
+            <a class="ghost-button calendar-nav-button" href="{{ url_for('main.index', view='calendar', month=event_calendar.next_month) }}#events" aria-label="Nächster Monat">›</a>
           </div>
-        {% endfor %}
-      </div>
+
+          <div class="calendar-weekdays" aria-hidden="true">
+            {% for weekday in event_calendar.weekday_labels %}
+              <span>{{ weekday }}</span>
+            {% endfor %}
+          </div>
+
+          <div class="calendar-grid">
+            {% for week in event_calendar.weeks %}
+              {% for day in week.days %}
+                <div class="calendar-day {% if not day.in_month %}outside{% endif %} {% if day.is_today %}today{% endif %}">
+                  <div class="calendar-day-header">
+                    <span>{{ day.day_number }}</span>
+                    {% if day.is_today %}
+                      <strong>Heute</strong>
+                    {% endif %}
+                  </div>
+                  <div class="calendar-day-events">
+                    {% for event in day.events %}
+                      <a class="calendar-event booking-{{ event.booking_status }}" href="{{ url_for('main.index', view='list') }}#event-{{ event.id }}">
+                        <strong>{{ event.name }}</strong>
+                        <span>{{ event.starts_on | date_only }} bis {{ event.ends_on | date_only }}</span>
+                      </a>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endfor %}
+            {% endfor %}
+          </div>
+        </section>
+      {% else %}
+        <div class="event-list">
+          {% for event in active_events %}
+            {{ event_card(event) }}
+          {% else %}
+            <div class="empty-panel">
+              <h3>Keine aktiven Events</h3>
+              <p>Lege oben den nächsten Auftrag an oder prüfe das Archiv für abgeschlossene und abgesagte Jobs.</p>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
 
       <section id="archive" class="archive-section">
         <div class="section-heading">
@@ -321,70 +303,6 @@
     </section>
 
     <aside class="secondary-flow">
-      <section id="inventory" class="tool-panel">
-        <div class="section-heading compact">
-          <div>
-            <p class="eyebrow">Bestand</p>
-            <h2>Inventar</h2>
-          </div>
-        </div>
-
-        <form method="post" action="{{ url_for('main.create_material') }}" class="stacked-form">
-          <label>
-            <span>Name</span>
-            <input name="name" placeholder="Flammenwerfer" required>
-          </label>
-          <div class="two-column">
-            <label>
-              <span>Art</span>
-              <select name="kind" required>
-                <option value="{{ material_fixed }}">{{ material_kind_labels[material_fixed] }}</option>
-                <option value="{{ material_consumable }}">{{ material_kind_labels[material_consumable] }}</option>
-              </select>
-            </label>
-            <label>
-              <span>Einheit</span>
-              <input name="unit" value="Stk." required>
-            </label>
-          </div>
-          <label>
-            <span>Gesamtmenge</span>
-            <input type="number" name="total_quantity" min="0" step="1" value="1" required>
-          </label>
-          <button class="primary-button" type="submit">Material hinzufügen</button>
-        </form>
-
-        <div class="material-groups">
-          <section class="material-group">
-            <div class="material-group-heading">
-              <h3>Festes Material</h3>
-              <span>{{ fixed_material_rows | length }}</span>
-            </div>
-            <div class="material-list">
-              {% for row in fixed_material_rows %}
-                {{ material_card(row) }}
-              {% else %}
-                <p class="empty-state">Kein festes Material.</p>
-              {% endfor %}
-            </div>
-          </section>
-
-          <section class="material-group">
-            <div class="material-group-heading">
-              <h3>Verbrauchsmaterial</h3>
-              <span>{{ consumable_material_rows | length }}</span>
-            </div>
-            <div class="material-list">
-              {% for row in consumable_material_rows %}
-                {{ material_card(row) }}
-              {% else %}
-                <p class="empty-state">Kein Verbrauchsmaterial.</p>
-              {% endfor %}
-            </div>
-          </section>
-        </div>
-      </section>
-
       <section id="personnel" class="tool-panel">
         <div class="section-heading compact">
           <div>

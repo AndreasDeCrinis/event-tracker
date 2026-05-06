@@ -19,8 +19,10 @@ app/
   static/styles.css           Plain CSS
   templates/
     base.html                 Header and burger menu
-    index.html                Main dashboard
+    index.html                Event dashboard, list/calendar switch, personnel
+    inventory.html            Inventory management
     settings.html             Settings page
+    _icons.html               Shared compact action icons
     _google_calendar_settings.html
 tests/
   test_inventory_logic.py     Behavior and route tests
@@ -32,6 +34,8 @@ tests/
 - Code, database fields, route names, and tests in English.
 - The main screen is the working dashboard, not a marketing page.
 - Settings are reached via the burger menu.
+- Inventory is reached via the burger menu and lives on `/inventory`.
+- The event dashboard supports list and calendar views.
 - Keep controls compact and practical.
 - Existing small icon-only buttons should remain compact and accessible with `aria-label`.
 
@@ -50,7 +54,7 @@ tests/
 - `Fixiert` books inventory and must not exceed availability.
 - Fixed material is only reserved for overlapping active planned fixed events.
 - Consumables count as reserved while fixed events are planned. On successful completion, assigned consumable quantities are subtracted from the material's total quantity.
-- The inventory UI separates fixed material and consumables. Consumables show reserved stock, open used stock, already deducted usage, and available stock.
+- The inventory page separates fixed material and consumables. Consumables show reserved stock, open used stock, already deducted usage, and available stock.
 - Cancelled events release fixed and consumable reservations.
 - Personnel conflicts are based on overlapping planned events.
 

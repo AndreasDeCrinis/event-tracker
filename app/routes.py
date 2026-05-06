@@ -1,3 +1,4 @@
+import calendar as calendar_module
 from datetime import datetime, time, timedelta, timezone
 import secrets
 
@@ -65,30 +66,37 @@ MATERIAL_KIND_LABELS = {
     MATERIAL_CONSUMABLE: "Verbrauchsmaterial",
 }
 
+MONTH_LABELS = (
+    "Januar",
+    "Februar",
+    "März",
+    "April",
+    "Mai",
+    "Juni",
+    "Juli",
+    "August",
+    "September",
+    "Oktober",
+    "November",
+    "Dezember",
+)
+
+WEEKDAY_LABELS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+
 
 @bp.get("/")
 def index():
     moment = datetime.now()
     today_start = _today_start()
+    event_view = request.args.get("view", "list")
+    if event_view not in {"list", "calendar"}:
+        event_view = "list"
+
     events = Event.query.order_by(Event.starts_at.asc(), Event.name.asc()).all()
     materials = Material.query.order_by(Material.name.asc()).all()
     people = Personnel.query.order_by(Personnel.name.asc()).all()
     active_events = [event for event in events if not _event_is_archived(event, today_start)]
     archive_events = [event for event in events if _event_is_archived(event, today_start)]
-
-    material_rows = [
-        {
-            "item": material,
-            "allocated": material_allocated_quantity(material, moment=moment),
-            "reserved": material_reserved_quantity(material, moment=moment),
-            "open_used": material_open_used_quantity(material, moment=moment),
-            "deducted_used": material_deducted_used_quantity(material),
-            "available": material_available_quantity(material, moment=moment),
-        }
-        for material in materials
-    ]
-    fixed_material_rows = [row for row in material_rows if row["item"].kind == MATERIAL_FIXED]
-    consumable_material_rows = [row for row in material_rows if row["item"].kind == MATERIAL_CONSUMABLE]
     personnel_rows = [
         {
             "person": person,
@@ -135,13 +143,12 @@ def index():
         "index.html",
         active_events=active_events,
         archive_events=archive_events,
-        material_rows=material_rows,
-        fixed_material_rows=fixed_material_rows,
-        consumable_material_rows=consumable_material_rows,
         personnel_rows=personnel_rows,
         event_material_options=event_material_options,
         event_personnel_options=event_personnel_options,
         event_material_warnings=event_material_warnings,
+        event_view=event_view,
+        event_calendar=_event_calendar_context(active_events),
         stats=stats,
         material_kinds=MATERIAL_KINDS,
         material_kind_labels=MATERIAL_KIND_LABELS,
@@ -154,6 +161,14 @@ def index():
         booking_planning=BOOKING_PLANNING,
         booking_fixed=BOOKING_FIXED,
         planned_status=STATUS_PLANNED,
+    )
+
+
+@bp.get("/inventory")
+def inventory():
+    return render_template(
+        "inventory.html",
+        **_inventory_template_context(),
     )
 
 
@@ -390,10 +405,10 @@ def create_material():
 
     if kind not in MATERIAL_KINDS:
         flash("Bitte festes Material oder Verbrauchsmaterial wählen.", "error")
-        return _redirect("inventory")
+        return _inventory_redirect()
 
     if not all((name, unit)) or quantity is None:
-        return _redirect("inventory")
+        return _inventory_redirect()
 
     material = Material(name=name, kind=kind, total_quantity=quantity, unit=unit, notes=_optional_text("notes"))
     db.session.add(material)
@@ -403,10 +418,10 @@ def create_material():
     except Exception:
         db.session.rollback()
         flash("Dieses Material existiert bereits.", "error")
-        return _redirect("inventory")
+        return _inventory_redirect()
 
     flash(f"{material.name} wurde zum Inventar hinzugefügt.", "success")
-    return _redirect("inventory")
+    return _inventory_redirect()
 
 
 @bp.post("/materials/<int:material_id>/quantity")
@@ -415,12 +430,12 @@ def update_material_quantity(material_id):
     quantity = _non_negative_int("total_quantity", "Gesamtmenge")
 
     if quantity is None:
-        return _redirect("inventory")
+        return _inventory_redirect()
 
     material.total_quantity = quantity
     db.session.commit()
     flash(f"Gesamtmenge von {material.name} wurde aktualisiert.", "success")
-    return _redirect("inventory")
+    return _inventory_redirect()
 
 
 @bp.post("/materials/<int:material_id>/delete")
@@ -429,7 +444,7 @@ def delete_material(material_id):
     db.session.delete(material)
     db.session.commit()
     flash(f"{material.name} wurde aus dem Inventar entfernt.", "success")
-    return _redirect("inventory")
+    return _inventory_redirect()
 
 
 @bp.post("/personnel")
@@ -606,6 +621,96 @@ def _redirect(anchor):
 
 def _settings_redirect(anchor):
     return redirect(url_for("main.settings") + f"#{anchor}")
+
+
+def _inventory_redirect():
+    return redirect(url_for("main.inventory") + "#inventory")
+
+
+def _event_calendar_context(events):
+    selected_month = request.args.get("month")
+    today = datetime.now().date()
+
+    try:
+        month_date = datetime.strptime(selected_month, "%Y-%m").date() if selected_month else today
+    except ValueError:
+        month_date = today
+
+    year = month_date.year
+    month = month_date.month
+    weeks = calendar_module.Calendar(firstweekday=0).monthdatescalendar(year, month)
+    calendar_start = weeks[0][0]
+    calendar_end = weeks[-1][-1]
+    events_by_date = {}
+
+    for event in events:
+        starts_on = max(event.starts_on, calendar_start)
+        ends_on = min(event.ends_on, calendar_end)
+        current_day = starts_on
+
+        while current_day <= ends_on:
+            events_by_date.setdefault(current_day, []).append(event)
+            current_day += timedelta(days=1)
+
+    previous_year, previous_month = _shift_month(year, month, -1)
+    next_year, next_month = _shift_month(year, month, 1)
+
+    return {
+        "weeks": [
+            {
+                "days": [
+                    {
+                        "date": day,
+                        "day_number": day.day,
+                        "in_month": day.month == month,
+                        "is_today": day == today,
+                        "events": events_by_date.get(day, []),
+                    }
+                    for day in week
+                ]
+            }
+            for week in weeks
+        ],
+        "weekday_labels": WEEKDAY_LABELS,
+        "month_label": f"{MONTH_LABELS[month - 1]} {year}",
+        "selected_month": _month_key(year, month),
+        "previous_month": _month_key(previous_year, previous_month),
+        "next_month": _month_key(next_year, next_month),
+    }
+
+
+def _inventory_template_context():
+    moment = datetime.now()
+    materials = Material.query.order_by(Material.name.asc()).all()
+    material_rows = [
+        {
+            "item": material,
+            "reserved": material_reserved_quantity(material, moment=moment),
+            "open_used": material_open_used_quantity(material, moment=moment),
+            "deducted_used": material_deducted_used_quantity(material),
+            "available": material_available_quantity(material, moment=moment),
+        }
+        for material in materials
+    ]
+
+    return {
+        "material_rows": material_rows,
+        "fixed_material_rows": [row for row in material_rows if row["item"].kind == MATERIAL_FIXED],
+        "consumable_material_rows": [row for row in material_rows if row["item"].kind == MATERIAL_CONSUMABLE],
+        "material_kinds": MATERIAL_KINDS,
+        "material_kind_labels": MATERIAL_KIND_LABELS,
+        "material_fixed": MATERIAL_FIXED,
+        "material_consumable": MATERIAL_CONSUMABLE,
+    }
+
+
+def _shift_month(year, month, delta):
+    month_index = year * 12 + month - 1 + delta
+    return month_index // 12, month_index % 12 + 1
+
+
+def _month_key(year, month):
+    return f"{year:04d}-{month:02d}"
 
 
 def _event_is_archived(event, today_start):

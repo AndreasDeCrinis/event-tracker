@@ -43,8 +43,10 @@ Do not mix `localhost` and `127.0.0.1` during Google OAuth. The session cookie a
 - `app/routes.py`: Flask routes for dashboard, settings, CRUD, assignments, closure, and Google Calendar actions.
 - `app/google_calendar.py`: Google OAuth and Calendar API sync helpers.
 - `app/templates/base.html`: common shell and burger menu.
-- `app/templates/index.html`: main dashboard.
+- `app/templates/index.html`: event dashboard with list/calendar views and personnel.
+- `app/templates/inventory.html`: inventory management page.
 - `app/templates/settings.html`: settings page.
+- `app/templates/_icons.html`: shared compact action icons.
 - `app/templates/_google_calendar_settings.html`: Google Calendar settings panel.
 - `app/static/styles.css`: all UI styling.
 - `tests/test_inventory_logic.py`: main behavior and route test suite.
@@ -52,13 +54,14 @@ Do not mix `localhost` and `127.0.0.1` during Google OAuth. The session cookie a
 ## Current Product Behavior
 
 - Events use a date range only, no hours.
+- Active events can be viewed as a list or monthly calendar on `/`.
 - Event location is optional.
 - Events can be `In Planung` or `Fixiert`.
 - Planned events may over-assign material and show warnings.
 - Fixed events actually book material and enforce availability.
 - Fixed material returns after the event window or closure.
 - Consumable material is reserved while a fixed event is planned. On successful completion, assigned consumable quantities are subtracted from the material's total quantity.
-- Inventory UI separates fixed material and consumables. Consumables show reserved stock, open used stock from past/not-yet-deducted events, already deducted usage, and available stock.
+- Inventory management lives on `/inventory` and separates fixed material from consumables. Consumables show reserved stock, open used stock from past/not-yet-deducted events, already deducted usage, and available stock.
 - Cancelled events release reservations.
 - Personnel are busy only during planned overlapping events.
 - Completed, cancelled, and past planned jobs appear in the archive.

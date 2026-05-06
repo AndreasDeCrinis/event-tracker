@@ -18,6 +18,12 @@ The SQLite database is stored in the Docker volume `event_job_data`, so your dat
 docker compose run --rm web pytest
 ```
 
+## UI Areas
+
+- `/` shows the event dashboard with active events, personnel, and the job archive. Active events can be viewed as a list or as a monthly calendar.
+- `/inventory` manages fixed material and consumables separately.
+- `/settings` contains the Google Calendar connection.
+
 ## Publish Docker Image
 
 The GitHub Actions workflow runs the test suite and publishes `adecrinis/event-job-tracker` to Docker Hub from pushes to `main`.
@@ -114,6 +120,6 @@ https://www.googleapis.com/auth/calendar.events
 - `In Planung` events can list more material than is currently available. They do not reserve or consume inventory, and the UI warns when planned material may be insufficient.
 - `Fixiert` events actually book material. Fixed materials, such as flamethrowers, are reserved only for fixed planned events that overlap the same date range.
 - Consumables, such as flamethrower fuel, are reserved for fixed planned events. When an event is successfully completed, the assigned consumable quantities are subtracted from the material's total quantity.
-- The inventory separates fixed material and consumables. Consumables show reserved quantities, open used quantities from past or not-yet-deducted events, already deducted usage, and currently available stock.
+- The inventory page separates fixed material and consumables. Consumables show reserved quantities, open used quantities from past or not-yet-deducted events, already deducted usage, and currently available stock.
 - Cancelled events release both fixed material reservations and consumable reservations.
 - Personnel are unavailable only during planned events that overlap their assigned event time. After the event window, they are free again.
