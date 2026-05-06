@@ -815,6 +815,10 @@ details[open] > .collapsible-summary .collapse-indicator::before {
   font-size: 0.86rem;
 }
 
+.inventory-warning {
+  margin-top: 0;
+}
+
 .assignment-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

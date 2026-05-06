@@ -622,6 +622,39 @@ def test_inventory_renders_material_groups_and_consumable_usage_metrics(app):
     assert "<table" not in html
 
 
+def test_inventory_warns_when_planned_material_exceeds_stock(app):
+    future_day = datetime.now().date() + timedelta(days=30)
+
+    with app.app_context():
+        material = Material(name="Warning inventory item", kind=MATERIAL_FIXED, total_quantity=3, unit="pcs")
+        planning = make_event(
+            "Planning demand",
+            future_day,
+            future_day,
+            booking_status=BOOKING_PLANNING,
+        )
+        fixed = make_event("Fixed demand", future_day, future_day)
+        cancelled = make_event("Cancelled demand", future_day, future_day)
+        cancelled.status = STATUS_CANCELLED
+        db.session.add_all([material, planning, fixed, cancelled])
+        db.session.flush()
+        db.session.add_all(
+            [
+                EventMaterial(event=planning, material=material, quantity=2),
+                EventMaterial(event=fixed, material=material, quantity=2),
+                EventMaterial(event=cancelled, material=material, quantity=10),
+            ]
+        )
+        db.session.commit()
+
+    html = app.test_client().get("/inventory").data.decode()
+
+    assert "Geplante Menge übersteigt den Bestand." in html
+    assert "4 pcs geplant" in html
+    assert "3 pcs im Bestand" in html
+    assert "1 pcs fehlen" in html
+
+
 def test_inventory_management_is_on_separate_page(app):
     client = app.test_client()
     dashboard_html = client.get("/").data.decode()

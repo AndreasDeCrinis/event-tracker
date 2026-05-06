@@ -42,6 +42,7 @@ from .models import (
     material_available_quantity,
     material_deducted_used_quantity,
     material_open_used_quantity,
+    material_planned_quantity,
     material_reserved_quantity,
     material_shortage_quantity,
     personnel_has_conflict,
@@ -1040,10 +1041,14 @@ def _inventory_template_context():
             "reserved": material_reserved_quantity(material, moment=moment),
             "open_used": material_open_used_quantity(material, moment=moment),
             "deducted_used": material_deducted_used_quantity(material),
+            "planned": material_planned_quantity(material, moment=moment),
             "available": material_available_quantity(material, moment=moment),
         }
         for material in materials
     ]
+
+    for row in material_rows:
+        row["planned_shortage"] = max(row["planned"] - row["item"].total_quantity, 0)
 
     return {
         "material_rows": material_rows,

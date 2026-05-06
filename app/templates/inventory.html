@@ -16,6 +16,17 @@
       </summary>
 
       <div class="collapsible-body material-item-body">
+        {% if row.planned_shortage > 0 %}
+          <div class="warning-panel inventory-warning">
+            <strong>Geplante Menge übersteigt den Bestand.</strong>
+            <span>
+              {{ row.planned }} {{ material.unit }} geplant,
+              {{ material.total_quantity }} {{ material.unit }} im Bestand,
+              {{ row.planned_shortage }} {{ material.unit }} fehlen.
+            </span>
+          </div>
+        {% endif %}
+
         <form method="post" action="{{ url_for('main.delete_material', material_id=material.id) }}">
           <button class="compact-icon-button remove-button" type="submit" aria-label="{{ material.name }} löschen" title="Entfernen">
             {{ action_icon("remove") }}
@@ -39,6 +50,10 @@
                 {{ row.available }} {{ material.unit }}
               </span>
             </dd>
+          </div>
+          <div class="metric">
+            <dt>Geplant</dt>
+            <dd>{{ row.planned }} {{ material.unit }}</dd>
           </div>
           <div class="metric">
             <dt>{{ "Reserviert" if is_consumable else "Gebunden" }}</dt>

@@ -356,6 +356,15 @@ def material_deducted_used_quantity(material):
     )
 
 
+def material_planned_quantity(material, moment=None):
+    moment = moment or datetime.now()
+    return sum(
+        assignment.quantity
+        for assignment in material.assignments
+        if assignment.event.status == STATUS_PLANNED and assignment.event.ends_at > moment
+    )
+
+
 def material_available_quantity(material, target_event=None, moment=None, exclude_event_id=None):
     allocated = material_allocated_quantity(
         material,
