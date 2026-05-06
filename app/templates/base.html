@@ -11,13 +11,13 @@
   </head>
   <body>
     <header class="topbar">
-      <div class="brand-lockup">
+      <a class="brand-lockup" href="{{ url_for('main.index') }}" aria-label="Zur Startseite">
         <img class="app-logo" src="{{ url_for('static', filename='app-logo.svg') }}" alt="" width="54" height="54">
         <div>
           <p class="eyebrow">Lokale Planung</p>
           <h1>Event-Job-Planer</h1>
         </div>
-      </div>
+      </a>
       <details class="menu-shell">
         <summary class="menu-button" aria-label="Menü öffnen">
           <span></span>
