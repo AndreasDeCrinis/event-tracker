@@ -57,6 +57,22 @@ select:disabled {
   z-index: 10;
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.app-logo {
+  display: block;
+  flex: 0 0 auto;
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(8, 127, 114, 0.2);
+}
+
 h1,
 h2,
 h3,
@@ -1259,6 +1275,16 @@ th {
   .topbar {
     position: static;
     align-items: flex-start;
+  }
+
+  .brand-lockup {
+    gap: 12px;
+  }
+
+  .app-logo {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
   }
 
   .menu-shell {

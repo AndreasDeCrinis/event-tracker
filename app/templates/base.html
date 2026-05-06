@@ -4,15 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Event-Job-Planer</title>
+    <link rel="icon" href="{{ url_for('static', filename='app-logo.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="{{ url_for('static', filename='collapsible-state.js') }}" defer></script>
     <script src="{{ url_for('static', filename='event-template-loader.js') }}" defer></script>
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <p class="eyebrow">Lokale Planung</p>
-        <h1>Event-Job-Planer</h1>
+      <div class="brand-lockup">
+        <img class="app-logo" src="{{ url_for('static', filename='app-logo.svg') }}" alt="" width="54" height="54">
+        <div>
+          <p class="eyebrow">Lokale Planung</p>
+          <h1>Event-Job-Planer</h1>
+        </div>
       </div>
       <details class="menu-shell">
         <summary class="menu-button" aria-label="Menü öffnen">

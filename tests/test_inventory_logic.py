@@ -942,6 +942,8 @@ def test_planning_event_material_assignment_quantity_can_exceed_inventory(app):
 def test_burger_menu_links_to_settings(app):
     html = app.test_client().get("/").data.decode()
 
+    assert 'rel="icon" href="/static/app-logo.svg"' in html
+    assert 'class="app-logo" src="/static/app-logo.svg"' in html
     assert 'class="menu-button"' in html
     assert 'href="/templates"' in html
     assert "Vorlagen" in html
