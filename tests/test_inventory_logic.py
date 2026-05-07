@@ -1015,6 +1015,8 @@ def test_burger_menu_links_to_settings(app):
 
     assert 'class="brand-lockup" href="/"' in html
     assert 'rel="icon" href="/static/app-logo.svg"' in html
+    assert 'rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png"' in html
+    assert 'rel="manifest" href="/static/site.webmanifest"' in html
     assert 'class="app-logo" src="/static/app-logo.svg"' in html
     assert 'class="menu-button"' in html
     assert 'href="/templates"' in html
