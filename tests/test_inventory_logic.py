@@ -795,6 +795,68 @@ def test_event_list_view_is_default(app):
     assert 'class="calendar-panel"' not in html
 
 
+def test_event_schedule_can_be_updated_from_event_card(app):
+    with app.app_context():
+        event = make_event("Rescheduled event", date(2999, 1, 10), date(2999, 1, 10))
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
+
+    html = app.test_client().get("/").data.decode()
+
+    assert "Zeitraum bearbeiten" in html
+    assert f'action="/events/{event_id}/schedule"' in html
+    assert 'class="date-time-group"' in html
+
+    response = app.test_client().post(
+        f"/events/{event_id}/schedule",
+        data={
+            "starts_on": "2999-02-01",
+            "starts_at_time": "10:30",
+            "ends_on": "2999-02-02",
+            "ends_at_time": "12:00",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == f"/#event-{event_id}"
+    with app.app_context():
+        event = db.session.get(Event, event_id)
+        assert event.starts_at == datetime(2999, 2, 1, 10, 30)
+        assert event.ends_at == datetime(2999, 2, 2, 12, 0)
+
+
+def test_fixed_event_schedule_update_rejects_material_conflict(app):
+    with app.app_context():
+        material = Material(name="Schedule conflict item", kind=MATERIAL_FIXED, total_quantity=1, unit="pcs")
+        event = make_event("Schedule target", date(2999, 3, 1), date(2999, 3, 1))
+        blocker = make_event("Schedule blocker", date(2999, 3, 2), date(2999, 3, 2))
+        db.session.add_all([material, event, blocker])
+        db.session.flush()
+        db.session.add_all(
+            [
+                EventMaterial(event=event, material=material, quantity=1),
+                EventMaterial(event=blocker, material=material, quantity=1),
+            ]
+        )
+        db.session.commit()
+        event_id = event.id
+
+    response = app.test_client().post(
+        f"/events/{event_id}/schedule",
+        data={
+            "starts_on": "2999-03-02",
+            "ends_on": "2999-03-02",
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = db.session.get(Event, event_id)
+        assert event.starts_on == date(2999, 3, 1)
+        assert event.ends_on == date(2999, 3, 1)
+
+
 def test_event_time_tracking_can_be_updated_and_rendered(app):
     with app.app_context():
         event = make_event("Travel-heavy job", date(2999, 5, 1), date(2999, 5, 3))
@@ -846,6 +908,20 @@ def test_event_time_tracking_can_be_updated_and_rendered(app):
 
     assert "Tatsächliche Arbeitszeit" not in dashboard_html
     assert f'action="/events/{event_id}/time-tracking"' not in dashboard_html
+
+
+def test_time_tracking_orders_jobs_by_date_newest_first(app):
+    with app.app_context():
+        oldest = make_event("Oldest time job", date(2020, 1, 1), date(2020, 1, 1))
+        recent = make_event("Recent time job", date(2024, 1, 1), date(2024, 1, 1))
+        future = make_event("Future time job", date(2999, 1, 1), date(2999, 1, 1))
+        db.session.add_all([oldest, recent, future])
+        db.session.commit()
+
+    html = app.test_client().get("/time-tracking").data.decode()
+
+    assert html.index("Future time job") < html.index("Recent time job")
+    assert html.index("Recent time job") < html.index("Oldest time job")
 
 
 def test_event_time_tracking_rejects_negative_hours(app):

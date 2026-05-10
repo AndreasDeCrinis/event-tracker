@@ -228,7 +228,7 @@ def todos():
 
 @bp.get("/time-tracking")
 def time_tracking():
-    events = Event.query.order_by(Event.starts_at.desc(), Event.name.asc()).all()
+    events = Event.query.order_by(Event.starts_at.desc(), Event.ends_at.desc(), Event.name.asc()).all()
     return render_template(
         "time_tracking.html",
         events=events,
@@ -516,6 +516,57 @@ def set_event_calendar_sync(event_id):
     db.session.commit()
     _wake_google_sync_worker(google_sync_queued)
     flash(f"Kalender-Sync für {event.name} wurde aktualisiert.", "success")
+    return _redirect("event-" + str(event.id))
+
+
+@bp.post("/events/<int:event_id>/schedule")
+def update_event_schedule(event_id):
+    event = Event.query.get_or_404(event_id)
+
+    if not _event_is_open_for_assignment(event):
+        flash("Nur aktive geplante Events können zeitlich bearbeitet werden.", "error")
+        return _redirect("event-" + str(event.id))
+
+    starts_on_value = _required_text("starts_on", "Beginn")
+    ends_on_value = _required_text("ends_on", "Ende")
+    starts_at_time_value = _optional_text("starts_at_time")
+    ends_at_time_value = _optional_text("ends_at_time")
+
+    if not all((starts_on_value, ends_on_value)):
+        return _redirect("event-" + str(event.id))
+
+    try:
+        starts_on = _parse_date_local(starts_on_value)
+        ends_on = _parse_date_local(ends_on_value)
+    except ValueError:
+        flash("Bitte ein gültiges Beginndatum und ein gültiges Enddatum verwenden.", "error")
+        return _redirect("event-" + str(event.id))
+
+    try:
+        starts_at, ends_at = _event_datetimes(starts_on, ends_on, starts_at_time_value, ends_at_time_value)
+    except ValueError as error:
+        flash(str(error), "error")
+        return _redirect("event-" + str(event.id))
+
+    old_starts_at = event.starts_at
+    old_ends_at = event.ends_at
+    event.starts_at = starts_at
+    event.ends_at = ends_at
+
+    with db.session.no_autoflush:
+        schedule_error = _event_schedule_assignment_error(event)
+
+    if schedule_error:
+        event.starts_at = old_starts_at
+        event.ends_at = old_ends_at
+        flash(schedule_error, "error")
+        return _redirect("event-" + str(event.id))
+
+    _prune_event_work_days(event)
+    google_sync_queued = _queue_event_sync_if_google_connected(event)
+    db.session.commit()
+    _wake_google_sync_worker(google_sync_queued)
+    flash(f"Zeitraum von {event.name} wurde aktualisiert.", "success")
     return _redirect("event-" + str(event.id))
 
 
@@ -1310,6 +1361,37 @@ def _deduct_consumables_for_completed_event(event):
 
     event.consumables_deducted_at = _utc_now()
     return True
+
+
+def _event_schedule_assignment_error(event):
+    if event.booking_status == BOOKING_FIXED:
+        warnings = _material_shortage_warnings(event)
+        if warnings:
+            shortage_text = ", ".join(
+                f"{warning['material'].name}: {warning['shortage']} {warning['material'].unit}"
+                for warning in warnings
+            )
+            return f"Zeitraum kann nicht geändert werden. Material fehlt: {shortage_text}."
+
+    conflicts = [
+        assignment.personnel.name
+        for assignment in event.personnel_assignments
+        if personnel_has_conflict(assignment.personnel, event)
+    ]
+    if conflicts:
+        return "Zeitraum kann nicht geändert werden. Personal ist bereits belegt: " + ", ".join(conflicts) + "."
+
+    return None
+
+
+def _prune_event_work_days(event):
+    valid_dates = set(event.scheduled_work_dates)
+    for entry in list(event.work_day_entries):
+        if entry.work_on not in valid_dates:
+            db.session.delete(entry)
+
+    if event.work_day_entries:
+        event.actual_work_minutes = sum(event.work_minutes_for_date(day) for day in event.scheduled_work_dates)
 
 
 def _google_calendar_template_context():

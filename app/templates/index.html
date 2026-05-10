@@ -88,6 +88,37 @@
           <p class="notes">{{ event.notes }}</p>
         {% endif %}
 
+        {% if can_assign %}
+          <form class="event-schedule-form" method="post" action="{{ url_for('main.update_event_schedule', event_id=event.id) }}">
+            <h4>Zeitraum bearbeiten</h4>
+            <div class="event-schedule-grid">
+              <div class="date-time-group">
+                <label>
+                  <span>Beginn</span>
+                  <input type="date" name="starts_on" value="{{ event.starts_on.isoformat() }}" required>
+                </label>
+                <label>
+                  <span>Startzeit</span>
+                  <input type="time" name="starts_at_time" value="{{ event.starts_at_time.strftime('%H:%M') if event.starts_at_time else '' }}">
+                </label>
+              </div>
+              <div class="date-time-group">
+                <label>
+                  <span>Ende</span>
+                  <input type="date" name="ends_on" value="{{ event.ends_on.isoformat() }}" required>
+                </label>
+                <label>
+                  <span>Endzeit</span>
+                  <input type="time" name="ends_at_time" value="{{ event.ends_at_time.strftime('%H:%M') if event.ends_at_time else '' }}">
+                </label>
+              </div>
+              <button class="compact-icon-button save-button" type="submit" aria-label="Zeitraum für {{ event.name }} speichern" title="Speichern">
+                {{ action_icon("save") }}
+              </button>
+            </div>
+          </form>
+        {% endif %}
+
         {% if material_warnings %}
           <div class="warning-panel">
             <strong>Material eventuell nicht ausreichend verfügbar.</strong>
@@ -229,22 +260,26 @@
             <span>Name</span>
             <input name="name" placeholder="Party" required data-event-template-field="name">
           </label>
-          <label>
-            <span>Beginn</span>
-            <input type="date" name="starts_on" required data-event-template-field="starts_on">
-          </label>
-          <label>
-            <span>Startzeit</span>
-            <input type="time" name="starts_at_time" data-event-template-field="starts_at_time">
-          </label>
-          <label>
-            <span>Ende</span>
-            <input type="date" name="ends_on" required data-event-template-field="ends_on">
-          </label>
-          <label>
-            <span>Endzeit</span>
-            <input type="time" name="ends_at_time" data-event-template-field="ends_at_time">
-          </label>
+          <div class="date-time-group">
+            <label>
+              <span>Beginn</span>
+              <input type="date" name="starts_on" required data-event-template-field="starts_on">
+            </label>
+            <label>
+              <span>Startzeit</span>
+              <input type="time" name="starts_at_time" data-event-template-field="starts_at_time">
+            </label>
+          </div>
+          <div class="date-time-group">
+            <label>
+              <span>Ende</span>
+              <input type="date" name="ends_on" required data-event-template-field="ends_on">
+            </label>
+            <label>
+              <span>Endzeit</span>
+              <input type="time" name="ends_at_time" data-event-template-field="ends_at_time">
+            </label>
+          </div>
           <label>
             <span>Ort</span>
             <input name="location" placeholder="Optional" data-event-template-field="location">

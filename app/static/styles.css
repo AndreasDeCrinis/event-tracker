@@ -521,6 +521,12 @@ main {
   grid-column: span 2;
 }
 
+.date-time-group {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -946,6 +952,21 @@ details[open] > .collapsible-summary .collapse-indicator::before {
 
 .inline-form select {
   min-width: 128px;
+}
+
+.event-schedule-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.event-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 220px)) 34px;
+  align-items: end;
+  gap: 12px;
 }
 
 .time-job-list {
@@ -1669,10 +1690,19 @@ th {
 
   .event-card-header,
   .time-job-summary,
+  .event-schedule-grid,
   .assign-form,
   .inline-form {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .event-schedule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .event-schedule-grid .compact-icon-button {
+    justify-self: start;
   }
 
   .time-job-summary-meta {
