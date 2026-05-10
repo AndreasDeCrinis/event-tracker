@@ -26,6 +26,7 @@ from app.models import (
     GoogleCalendarSyncJob,
     Material,
     Personnel,
+    TodoItem,
     material_assignable_quantity,
     material_allocated_quantity,
     material_available_quantity,
@@ -693,6 +694,66 @@ def test_inventory_management_is_on_separate_page(app):
     assert "/materials" in inventory_html
 
 
+def test_todo_page_adds_and_moves_items_to_done_list(app):
+    client = app.test_client()
+
+    response = client.post("/todos", data={"title": "Kabel prüfen"})
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/todos#todos"
+
+    with app.app_context():
+        todo = TodoItem.query.filter_by(title="Kabel prüfen").one()
+        todo_id = todo.id
+        assert not todo.done
+        assert todo.completed_at is None
+
+    html = client.get("/todos").data.decode()
+
+    assert "<h2>Todo-Liste</h2>" in html
+    assert "Kabel prüfen" in html
+    assert "Zu erledigen" in html
+    assert "Erledigt" in html
+    assert 'class="todo-item"' in html
+
+    response = client.post(f"/todos/{todo_id}/toggle", data={"done": "1"})
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/todos#todos"
+
+    with app.app_context():
+        todo = db.session.get(TodoItem, todo_id)
+        assert todo.done
+        assert todo.completed_at is not None
+
+    html = client.get("/todos").data.decode()
+
+    assert 'class="todo-item todo-item-done"' in html
+    assert "checked" in html
+
+    client.post(f"/todos/{todo_id}/toggle", data={"done": "0"})
+
+    with app.app_context():
+        todo = db.session.get(TodoItem, todo_id)
+        assert not todo.done
+        assert todo.completed_at is None
+
+
+def test_todo_item_can_be_deleted(app):
+    with app.app_context():
+        todo = TodoItem(title="Alte Aufgabe")
+        db.session.add(todo)
+        db.session.commit()
+        todo_id = todo.id
+
+    response = app.test_client().post(f"/todos/{todo_id}/delete")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/todos#todos"
+    with app.app_context():
+        assert db.session.get(TodoItem, todo_id) is None
+
+
 def test_event_templates_are_managed_on_dedicated_page(app):
     client = app.test_client()
     dashboard_html = client.get("/").data.decode()
@@ -1046,6 +1107,8 @@ def test_burger_menu_links_to_settings(app):
     assert 'class="menu-button"' in html
     assert 'href="/templates"' in html
     assert "Vorlagen" in html
+    assert 'href="/todos"' in html
+    assert "Todo-Liste" in html
     assert 'href="/settings"' in html
     assert "Einstellungen" in html
 

@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="{{ url_for('static', filename='collapsible-state.js') }}" defer></script>
     <script src="{{ url_for('static', filename='event-template-loader.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='todo-list.js') }}" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -33,6 +34,7 @@
           <a href="{{ url_for('main.index') }}#archive">Job-Archiv</a>
           <a href="{{ url_for('main.event_templates') }}">Vorlagen</a>
           <a href="{{ url_for('main.inventory') }}">Inventar</a>
+          <a href="{{ url_for('main.todos') }}">Todo-Liste</a>
           <a href="{{ url_for('main.index') }}#personnel">Personal</a>
           <a href="{{ url_for('main.settings') }}">Einstellungen</a>
         </nav>

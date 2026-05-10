@@ -37,6 +37,7 @@ from .models import (
     GoogleCalendarConnection,
     Material,
     Personnel,
+    TodoItem,
     material_assignable_quantity,
     material_allocated_quantity,
     material_available_quantity,
@@ -201,6 +202,25 @@ def settings():
     return render_template(
         "settings.html",
         **_google_calendar_template_context(),
+    )
+
+
+@bp.get("/todos")
+def todos():
+    open_todos = (
+        TodoItem.query.filter_by(done=False)
+        .order_by(TodoItem.created_at.asc(), TodoItem.title.asc())
+        .all()
+    )
+    done_todos = (
+        TodoItem.query.filter_by(done=True)
+        .order_by(TodoItem.completed_at.desc(), TodoItem.created_at.desc())
+        .all()
+    )
+    return render_template(
+        "todos.html",
+        open_todos=open_todos,
+        done_todos=done_todos,
     )
 
 
@@ -519,6 +539,50 @@ def delete_event(event_id):
     _wake_google_sync_worker(google_sync_queued)
     flash(f"{event.name} wurde entfernt.", "success")
     return _redirect("events")
+
+
+@bp.post("/todos")
+def create_todo_item():
+    title = _required_text("title", "Aufgabe")
+
+    if not title:
+        return _todos_redirect()
+
+    todo = TodoItem(title=title)
+    db.session.add(todo)
+    db.session.commit()
+    flash(f"{todo.title} wurde zur Todo-Liste hinzugefügt.", "success")
+    return _todos_redirect()
+
+
+@bp.post("/todos/<int:todo_id>/toggle")
+def toggle_todo_item(todo_id):
+    todo = TodoItem.query.get_or_404(todo_id)
+    done = _form_checkbox_checked("done")
+
+    if done and not todo.done:
+        todo.completed_at = _utc_now()
+    elif not done:
+        todo.completed_at = None
+
+    todo.done = done
+    db.session.commit()
+
+    if todo.done:
+        flash(f"{todo.title} wurde als erledigt markiert.", "success")
+    else:
+        flash(f"{todo.title} ist wieder offen.", "success")
+
+    return _todos_redirect()
+
+
+@bp.post("/todos/<int:todo_id>/delete")
+def delete_todo_item(todo_id):
+    todo = TodoItem.query.get_or_404(todo_id)
+    db.session.delete(todo)
+    db.session.commit()
+    flash(f"{todo.title} wurde entfernt.", "success")
+    return _todos_redirect()
 
 
 @bp.post("/google-calendar/settings")
@@ -1013,6 +1077,10 @@ def _inventory_redirect():
 
 def _templates_redirect(anchor="templates"):
     return redirect(url_for("main.event_templates") + f"#{anchor}")
+
+
+def _todos_redirect():
+    return redirect(url_for("main.todos") + "#todos")
 
 
 def _event_calendar_context(events):

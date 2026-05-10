@@ -264,6 +264,12 @@ main {
   max-width: 1180px;
 }
 
+.todo-page {
+  display: grid;
+  gap: 16px;
+  max-width: 960px;
+}
+
 .inventory-layout {
   display: grid;
   grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
@@ -288,6 +294,101 @@ main {
 .template-create-panel {
   position: sticky;
   top: 126px;
+}
+
+.todo-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
+}
+
+.todo-create-panel {
+  position: sticky;
+  top: 126px;
+}
+
+.todo-list-stack {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.todo-list-panel {
+  border-top: 4px solid var(--teal);
+}
+
+.todo-done-panel {
+  border-top-color: var(--violet);
+}
+
+.todo-list-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.todo-list-heading > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: var(--teal-dark);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.todo-items {
+  display: grid;
+  gap: 8px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.todo-toggle-form {
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 800;
+  min-width: 0;
+}
+
+.todo-check-label input[type="checkbox"] {
+  width: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  accent-color: var(--teal);
+}
+
+.todo-title {
+  overflow-wrap: anywhere;
+}
+
+.todo-item-done .todo-title {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 
 .template-list {
@@ -1334,13 +1435,15 @@ th {
   .workspace,
   .inventory-layout,
   .templates-layout,
+  .todo-layout,
   .inventory-groups,
   .assignment-grid {
     grid-template-columns: 1fr;
   }
 
   .inventory-create-panel,
-  .template-create-panel {
+  .template-create-panel,
+  .todo-create-panel {
     position: static;
   }
 

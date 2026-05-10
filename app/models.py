@@ -154,6 +154,14 @@ class Personnel(db.Model):
     )
 
 
+class TodoItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    done = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=_utc_now, index=True)
+    completed_at = db.Column(db.DateTime, nullable=True, index=True)
+
+
 class EventTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)

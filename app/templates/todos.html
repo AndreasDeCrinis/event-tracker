@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% from "_icons.html" import action_icon %}
+
+  {% macro todo_item(item) %}
+    <div class="todo-item{% if item.done %} todo-item-done{% endif %}">
+      <form class="todo-toggle-form" method="post" action="{{ url_for('main.toggle_todo_item', todo_id=item.id) }}" data-todo-toggle-form>
+        <input type="hidden" name="done" value="0">
+        <label class="todo-check-label">
+          <input type="checkbox" name="done" value="1" {% if item.done %}checked{% endif %} data-todo-toggle>
+          <span class="todo-title">{{ item.title }}</span>
+        </label>
+        <noscript>
+          <button class="ghost-button" type="submit">Speichern</button>
+        </noscript>
+      </form>
+      <form method="post" action="{{ url_for('main.delete_todo_item', todo_id=item.id) }}">
+        <button class="compact-icon-button remove-button" type="submit" aria-label="{{ item.title }} löschen" title="Entfernen">
+          {{ action_icon("remove") }}
+        </button>
+      </form>
+    </div>
+  {% endmacro %}
+
+  <section id="todos" class="todo-page">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Aufgaben</p>
+        <h2>Todo-Liste</h2>
+      </div>
+      <a class="ghost-button nav-link-button" href="{{ url_for('main.index') }}#events">Events</a>
+    </div>
+
+    <div class="todo-layout">
+      <section class="tool-panel todo-create-panel">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">Neu</p>
+            <h3>Aufgabe hinzufügen</h3>
+          </div>
+        </div>
+
+        <form method="post" action="{{ url_for('main.create_todo_item') }}" class="stacked-form">
+          <label>
+            <span>Aufgabe</span>
+            <input name="title" placeholder="Kabel prüfen" required>
+          </label>
+          <button class="primary-button" type="submit">Aufgabe hinzufügen</button>
+        </form>
+      </section>
+
+      <div class="todo-list-stack">
+        <section class="tool-panel todo-list-panel">
+          <div class="todo-list-heading">
+            <div>
+              <p class="eyebrow">Offen</p>
+              <h3>Zu erledigen</h3>
+            </div>
+            <span>{{ open_todos | length }}</span>
+          </div>
+
+          <div class="todo-items">
+            {% for item in open_todos %}
+              {{ todo_item(item) }}
+            {% else %}
+              <p class="empty-state">Keine offenen Aufgaben.</p>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="tool-panel todo-list-panel todo-done-panel">
+          <div class="todo-list-heading">
+            <div>
+              <p class="eyebrow">Erledigt</p>
+              <h3>Erledigt</h3>
+            </div>
+            <span>{{ done_todos | length }}</span>
+          </div>
+
+          <div class="todo-items">
+            {% for item in done_todos %}
+              {{ todo_item(item) }}
+            {% else %}
+              <p class="empty-state">Noch nichts erledigt.</p>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+{% endblock %}
