@@ -920,8 +920,48 @@ def test_time_tracking_orders_jobs_by_date_newest_first(app):
 
     html = app.test_client().get("/time-tracking").data.decode()
 
+    assert 'href="/time-tracking?order=desc#time-tracking" class="active"' in html
+    assert 'href="/time-tracking?order=asc#time-tracking"' in html
     assert html.index("Future time job") < html.index("Recent time job")
     assert html.index("Recent time job") < html.index("Oldest time job")
+
+
+def test_time_tracking_can_order_jobs_by_date_oldest_first(app):
+    with app.app_context():
+        oldest = make_event("Ascending oldest job", date(2020, 1, 1), date(2020, 1, 1))
+        recent = make_event("Ascending recent job", date(2024, 1, 1), date(2024, 1, 1))
+        future = make_event("Ascending future job", date(2999, 1, 1), date(2999, 1, 1))
+        db.session.add_all([oldest, recent, future])
+        db.session.commit()
+        recent_id = recent.id
+
+    html = app.test_client().get("/time-tracking?order=asc").data.decode()
+
+    assert 'href="/time-tracking?order=asc#time-tracking" class="active"' in html
+    assert html.index("Ascending oldest job") < html.index("Ascending recent job")
+    assert html.index("Ascending recent job") < html.index("Ascending future job")
+    assert 'name="order" value="asc"' in html
+
+    response = app.test_client().post(
+        f"/events/{recent_id}/time-tracking",
+        data={"order": "asc", "work_on": "2024-01-01", "actual_work_hours": "8"},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == f"/time-tracking?order=asc#time-event-{recent_id}"
+
+
+def test_time_tracking_invalid_order_falls_back_to_newest_first(app):
+    with app.app_context():
+        old = make_event("Fallback old job", date(2020, 1, 1), date(2020, 1, 1))
+        new = make_event("Fallback new job", date(2024, 1, 1), date(2024, 1, 1))
+        db.session.add_all([old, new])
+        db.session.commit()
+
+    html = app.test_client().get("/time-tracking?order=sideways").data.decode()
+
+    assert 'href="/time-tracking?order=desc#time-tracking" class="active"' in html
+    assert html.index("Fallback new job") < html.index("Fallback old job")
 
 
 def test_event_time_tracking_rejects_negative_hours(app):

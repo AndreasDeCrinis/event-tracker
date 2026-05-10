@@ -228,10 +228,19 @@ def todos():
 
 @bp.get("/time-tracking")
 def time_tracking():
-    events = Event.query.order_by(Event.starts_at.desc(), Event.ends_at.desc(), Event.name.asc()).all()
+    order = request.args.get("order", "desc")
+    if order not in {"asc", "desc"}:
+        order = "desc"
+
+    if order == "asc":
+        events = Event.query.order_by(Event.starts_at.asc(), Event.ends_at.asc(), Event.name.asc()).all()
+    else:
+        events = Event.query.order_by(Event.starts_at.desc(), Event.ends_at.desc(), Event.name.asc()).all()
+
     return render_template(
         "time_tracking.html",
         events=events,
+        time_tracking_order=order,
         event_status_labels=EVENT_STATUS_LABELS,
         event_booking_status_labels=EVENT_BOOKING_STATUS_LABELS,
     )
@@ -1180,6 +1189,9 @@ def _todos_redirect():
 
 
 def _time_tracking_redirect(event_id):
+    order = request.form.get("order")
+    if order in {"asc", "desc"}:
+        return redirect(url_for("main.time_tracking", order=order) + f"#time-event-{event_id}")
     return redirect(url_for("main.time_tracking") + f"#time-event-{event_id}")
 
 

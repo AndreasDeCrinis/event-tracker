@@ -9,7 +9,13 @@
         <p class="eyebrow">Aufwand</p>
         <h2>Zeiterfassung</h2>
       </div>
-      <a class="ghost-button nav-link-button" href="{{ url_for('main.index') }}#events">Events</a>
+      <div class="button-row">
+        <nav class="view-switch" aria-label="Sortierung">
+          <a href="{{ url_for('main.time_tracking', order='desc') }}#time-tracking" class="{% if time_tracking_order == 'desc' %}active{% endif %}">Datum absteigend</a>
+          <a href="{{ url_for('main.time_tracking', order='asc') }}#time-tracking" class="{% if time_tracking_order == 'asc' %}active{% endif %}">Datum aufsteigend</a>
+        </nav>
+        <a class="ghost-button nav-link-button" href="{{ url_for('main.index') }}#events">Events</a>
+      </div>
     </div>
 
     <div class="time-job-list">
@@ -40,6 +46,7 @@
             <div class="time-day-list">
               {% for work_on in event.scheduled_work_dates %}
                 <form class="time-day-row" method="post" action="{{ url_for('main.update_event_time_tracking', event_id=event.id) }}">
+                  <input type="hidden" name="order" value="{{ time_tracking_order }}">
                   <input type="hidden" name="work_on" value="{{ work_on.isoformat() }}">
                   <div>
                     <strong>{{ work_on.strftime("%d.%m.%Y") }}</strong>
