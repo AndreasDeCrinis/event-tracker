@@ -270,6 +270,12 @@ main {
   max-width: 960px;
 }
 
+.time-tracking-page {
+  display: grid;
+  gap: 16px;
+  max-width: 1180px;
+}
+
 .inventory-layout {
   display: grid;
   grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
@@ -942,6 +948,150 @@ details[open] > .collapsible-summary .collapse-indicator::before {
   min-width: 128px;
 }
 
+.time-job-list {
+  display: grid;
+  gap: 12px;
+}
+
+.time-job-card {
+  padding: 0;
+  border-left: 5px solid var(--violet);
+}
+
+.time-job-card .booking-planning {
+  background: rgba(183, 121, 31, 0.12);
+  color: #7a4b12;
+}
+
+.time-job-card .booking-fixed {
+  background: rgba(109, 91, 208, 0.12);
+  color: var(--violet);
+}
+
+.time-job-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+}
+
+.time-job-title,
+.time-job-summary-meta,
+.time-job-default,
+.time-day-row {
+  display: flex;
+  align-items: center;
+}
+
+.time-job-title {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.time-job-title strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.time-job-title span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.time-job-summary-meta {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.time-job-summary-meta > strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.time-job-body {
+  border-top: 1px solid var(--line);
+  padding: 14px 16px 16px;
+}
+
+.time-job-default {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  margin-bottom: 12px;
+}
+
+.time-job-default strong {
+  color: var(--text);
+}
+
+.time-day-list {
+  display: grid;
+  gap: 8px;
+}
+
+.time-day-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(76px, 110px) auto 34px;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.time-day-row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.time-day-row > div span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.time-day-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding-block: 6px;
+}
+
+.time-day-row > span {
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.time-tracking-form {
+  display: grid;
+  grid-template-columns: minmax(76px, 110px) auto 34px;
+  justify-content: start;
+  align-items: center;
+  gap: 6px;
+  max-width: 360px;
+}
+
+.time-tracking-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding-block: 6px;
+}
+
+.time-tracking-form span {
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .notes {
   margin-top: 12px;
   color: var(--muted);
@@ -1518,10 +1668,19 @@ th {
   }
 
   .event-card-header,
+  .time-job-summary,
   .assign-form,
   .inline-form {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .time-job-summary-meta {
+    justify-content: flex-start;
+  }
+
+  .time-day-row {
+    grid-template-columns: minmax(0, 1fr) minmax(76px, 110px) auto 34px;
   }
 
   .assign-form input,
@@ -1540,8 +1699,13 @@ th {
   .template-create-panel .form-grid,
   .template-edit-form .form-grid,
   .two-column,
-  .material-metrics {
+  .material-metrics,
+  .time-day-row {
     grid-template-columns: 1fr;
+  }
+
+  .time-day-row .compact-icon-button {
+    justify-self: start;
   }
 
   .calendar-day {

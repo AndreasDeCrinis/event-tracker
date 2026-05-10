@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% from "_icons.html" import action_icon %}
+
+  <section id="time-tracking" class="time-tracking-page">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Aufwand</p>
+        <h2>Zeiterfassung</h2>
+      </div>
+      <a class="ghost-button nav-link-button" href="{{ url_for('main.index') }}#events">Events</a>
+    </div>
+
+    <div class="time-job-list">
+      {% for event in events %}
+        <details id="time-event-{{ event.id }}" class="tool-panel time-job-card" data-collapse-state-key="time-event:{{ event.id }}">
+          <summary class="time-job-summary collapsible-summary">
+            <div class="time-job-title">
+              <strong>{{ event.name }}</strong>
+              <span>{{ event | event_range }}</span>
+              {% if event.location %}
+                <span>{{ event.location }}</span>
+              {% endif %}
+            </div>
+            <div class="time-job-summary-meta">
+              <span class="status-pill">{{ event_status_labels[event.status] }}</span>
+              <span class="status-pill booking-{{ event.booking_status }}">{{ event_booking_status_labels[event.booking_status] }}</span>
+              <strong>{{ event.actual_work_hours_label }}</strong>
+              <span class="collapse-indicator">Tage</span>
+            </div>
+          </summary>
+
+          <div class="time-job-body">
+            <div class="time-job-default">
+              <strong>Standard: {{ event.actual_work_default_hours_label }}</strong>
+              <span>{{ event.scheduled_days }} {{ "Arbeitstag" if event.scheduled_days == 1 else "Arbeitstage" }} à 10 h</span>
+            </div>
+
+            <div class="time-day-list">
+              {% for work_on in event.scheduled_work_dates %}
+                <form class="time-day-row" method="post" action="{{ url_for('main.update_event_time_tracking', event_id=event.id) }}">
+                  <input type="hidden" name="work_on" value="{{ work_on.isoformat() }}">
+                  <div>
+                    <strong>{{ work_on.strftime("%d.%m.%Y") }}</strong>
+                    <span>{{ "manuell" if event.work_day_is_custom(work_on) else "Standardwert" }}</span>
+                  </div>
+                  <label class="sr-only" for="actual-work-hours-{{ event.id }}-{{ work_on.isoformat() }}">Arbeitszeit</label>
+                  <input id="actual-work-hours-{{ event.id }}-{{ work_on.isoformat() }}" type="number" name="actual_work_hours" min="0" step="0.25" value="{{ event.work_hours_value_for_date(work_on) }}" required>
+                  <span>{{ event.work_hours_label_for_date(work_on) }}</span>
+                  <button class="compact-icon-button save-button" type="submit" aria-label="Arbeitszeit für {{ event.name }} am {{ work_on.strftime('%d.%m.%Y') }} speichern" title="Speichern">
+                    {{ action_icon("save") }}
+                  </button>
+                </form>
+              {% endfor %}
+            </div>
+          </div>
+        </details>
+      {% else %}
+        <section class="tool-panel">
+          <p class="empty-state">Keine Jobs vorhanden.</p>
+        </section>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}

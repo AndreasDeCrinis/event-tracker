@@ -1,5 +1,6 @@
 import calendar as calendar_module
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import secrets
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
@@ -34,6 +35,7 @@ from .models import (
     EventTemplate,
     EventTemplateMaterial,
     EventTemplatePersonnel,
+    EventWorkDay,
     GoogleCalendarConnection,
     Material,
     Personnel,
@@ -221,6 +223,17 @@ def todos():
         "todos.html",
         open_todos=open_todos,
         done_todos=done_todos,
+    )
+
+
+@bp.get("/time-tracking")
+def time_tracking():
+    events = Event.query.order_by(Event.starts_at.desc(), Event.name.asc()).all()
+    return render_template(
+        "time_tracking.html",
+        events=events,
+        event_status_labels=EVENT_STATUS_LABELS,
+        event_booking_status_labels=EVENT_BOOKING_STATUS_LABELS,
     )
 
 
@@ -504,6 +517,38 @@ def set_event_calendar_sync(event_id):
     _wake_google_sync_worker(google_sync_queued)
     flash(f"Kalender-Sync für {event.name} wurde aktualisiert.", "success")
     return _redirect("event-" + str(event.id))
+
+
+@bp.post("/events/<int:event_id>/time-tracking")
+def update_event_time_tracking(event_id):
+    event = Event.query.get_or_404(event_id)
+    work_on_value = _required_text("work_on", "Arbeitstag")
+    minutes = _non_negative_hours_to_minutes("actual_work_hours", "Arbeitszeit")
+
+    if not work_on_value or minutes is None:
+        return _time_tracking_redirect(event.id)
+
+    try:
+        work_on = _parse_date_local(work_on_value)
+    except ValueError:
+        flash("Bitte einen gültigen Arbeitstag verwenden.", "error")
+        return _time_tracking_redirect(event.id)
+
+    if work_on not in event.scheduled_work_dates:
+        flash("Arbeitstag liegt nicht im Zeitraum des Jobs.", "error")
+        return _time_tracking_redirect(event.id)
+
+    work_day = EventWorkDay.query.filter_by(event_id=event.id, work_on=work_on).first()
+    if work_day:
+        work_day.actual_work_minutes = minutes
+    else:
+        db.session.add(EventWorkDay(event=event, work_on=work_on, actual_work_minutes=minutes))
+
+    event.actual_work_minutes = sum(event.work_minutes_for_date(day) for day in event.scheduled_work_dates)
+    event.actual_work_minutes_is_custom = True
+    db.session.commit()
+    flash(f"Arbeitszeit für {event.name} wurde aktualisiert.", "success")
+    return _time_tracking_redirect(event.id)
 
 
 @bp.post("/events/<int:event_id>/close")
@@ -1083,6 +1128,10 @@ def _todos_redirect():
     return redirect(url_for("main.todos") + "#todos")
 
 
+def _time_tracking_redirect(event_id):
+    return redirect(url_for("main.time_tracking") + f"#time-event-{event_id}")
+
+
 def _event_calendar_context(events):
     selected_month = request.args.get("month")
     today = datetime.now().date()
@@ -1375,6 +1424,25 @@ def _form_checkbox_checked(field, default=False):
     if not values:
         return default
     return "1" in values
+
+
+def _non_negative_hours_to_minutes(field, label):
+    raw_value = (request.form.get(field) or "").strip().replace(",", ".")
+    try:
+        hours = Decimal(raw_value)
+    except InvalidOperation:
+        flash(f"{label} muss eine gültige Stundenzahl sein.", "error")
+        return None
+
+    if not hours.is_finite():
+        flash(f"{label} muss eine gültige Stundenzahl sein.", "error")
+        return None
+
+    if hours < 0:
+        flash(f"{label} darf nicht negativ sein.", "error")
+        return None
+
+    return int((hours * Decimal(60)).to_integral_value(rounding=ROUND_HALF_UP))
 
 
 def _positive_int(field, label):

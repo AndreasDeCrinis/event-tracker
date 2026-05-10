@@ -159,6 +159,22 @@ def _migrate_database():
         db.session.commit()
         event_columns["consumables_deducted_at"] = {"name": "consumables_deducted_at"}
 
+    if "actual_work_minutes" not in event_columns:
+        db.session.execute(text("ALTER TABLE event ADD COLUMN actual_work_minutes INTEGER NOT NULL DEFAULT 0"))
+        db.session.commit()
+        event_columns["actual_work_minutes"] = {"name": "actual_work_minutes"}
+
+    if "actual_work_minutes_is_custom" not in event_columns:
+        db.session.execute(
+            text("ALTER TABLE event ADD COLUMN actual_work_minutes_is_custom BOOLEAN NOT NULL DEFAULT 0")
+        )
+        if "actual_work_minutes" in event_columns:
+            db.session.execute(
+                text("UPDATE event SET actual_work_minutes_is_custom = 1 WHERE actual_work_minutes > 0")
+            )
+        db.session.commit()
+        event_columns["actual_work_minutes_is_custom"] = {"name": "actual_work_minutes_is_custom"}
+
     db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_event_google_event_id ON event (google_event_id)"))
     db.session.commit()
 

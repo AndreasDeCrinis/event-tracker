@@ -22,6 +22,7 @@ from app.models import (
     EventTemplate,
     EventTemplateMaterial,
     EventTemplatePersonnel,
+    EventWorkDay,
     GoogleCalendarConnection,
     GoogleCalendarSyncJob,
     Material,
@@ -794,6 +795,99 @@ def test_event_list_view_is_default(app):
     assert 'class="calendar-panel"' not in html
 
 
+def test_event_time_tracking_can_be_updated_and_rendered(app):
+    with app.app_context():
+        event = make_event("Travel-heavy job", date(2999, 5, 1), date(2999, 5, 3))
+        completed_event = make_event("Completed time job", date(2020, 5, 1), date(2020, 5, 1))
+        completed_event.status = STATUS_COMPLETED
+        db.session.add_all([event, completed_event])
+        db.session.commit()
+        event_id = event.id
+
+    html = app.test_client().get("/time-tracking").data.decode()
+
+    assert "<h2>Zeiterfassung</h2>" in html
+    assert "Travel-heavy job" in html
+    assert "Completed time job" in html
+    assert 'class="tool-panel time-job-card"' in html
+    assert 'data-collapse-state-key="time-event:' in html
+    assert "01.05.2999" in html
+    assert "02.05.2999" in html
+    assert "03.05.2999" in html
+    assert "3 Arbeitstage à 10 h" in html
+    assert "30 h" in html
+    assert 'value="10"' in html
+    assert "Standardwert" in html
+
+    response = app.test_client().post(
+        f"/events/{event_id}/time-tracking",
+        data={"work_on": "2999-05-02", "actual_work_hours": "16.5"},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == f"/time-tracking#time-event-{event_id}"
+    with app.app_context():
+        event = db.session.get(Event, event_id)
+        assert EventWorkDay.query.filter_by(event_id=event_id).count() == 1
+        assert EventWorkDay.query.filter_by(event_id=event_id, work_on=date(2999, 5, 2)).one().actual_work_minutes == 990
+        assert event.actual_work_minutes == 2190
+        assert event.actual_work_minutes_is_custom
+        assert event.actual_work_hours_value == "36.5"
+        assert event.actual_work_hours_label == "36,5 h"
+
+    html = app.test_client().get("/time-tracking").data.decode()
+
+    assert f'action="/events/{event_id}/time-tracking"' in html
+    assert 'value="16.5"' in html
+    assert "36,5 h" in html
+    assert "manuell" in html
+
+    dashboard_html = app.test_client().get("/").data.decode()
+
+    assert "Tatsächliche Arbeitszeit" not in dashboard_html
+    assert f'action="/events/{event_id}/time-tracking"' not in dashboard_html
+
+
+def test_event_time_tracking_rejects_negative_hours(app):
+    with app.app_context():
+        event = make_event("Negative time job", date(2999, 5, 4), date(2999, 5, 4))
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
+
+    response = app.test_client().post(
+        f"/events/{event_id}/time-tracking",
+        data={"work_on": "2999-05-04", "actual_work_hours": "-1"},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = db.session.get(Event, event_id)
+        assert event.actual_work_minutes == 0
+        assert not event.actual_work_minutes_is_custom
+        assert EventWorkDay.query.filter_by(event_id=event_id).count() == 0
+
+
+def test_event_time_tracking_rejects_day_outside_job_range(app):
+    with app.app_context():
+        event = make_event("Outside day job", date(2999, 5, 4), date(2999, 5, 4))
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
+
+    response = app.test_client().post(
+        f"/events/{event_id}/time-tracking",
+        data={"work_on": "2999-05-05", "actual_work_hours": "8"},
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        event = db.session.get(Event, event_id)
+        assert event.actual_work_minutes == 0
+        assert not event.actual_work_minutes_is_custom
+        assert EventWorkDay.query.filter_by(event_id=event_id).count() == 0
+
+
 def test_event_list_orders_events_by_start_date_closest_to_today(app):
     today = datetime.now().date()
 
@@ -1107,6 +1201,8 @@ def test_burger_menu_links_to_settings(app):
     assert 'class="menu-button"' in html
     assert 'href="/templates"' in html
     assert "Vorlagen" in html
+    assert 'href="/time-tracking"' in html
+    assert "Zeiterfassung" in html
     assert 'href="/todos"' in html
     assert "Todo-Liste" in html
     assert 'href="/settings"' in html

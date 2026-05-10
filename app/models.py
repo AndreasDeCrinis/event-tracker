@@ -17,6 +17,7 @@ EVENT_STATUSES = (STATUS_PLANNED, STATUS_COMPLETED, STATUS_CANCELLED)
 BOOKING_PLANNING = "planning"
 BOOKING_FIXED = "fixed"
 EVENT_BOOKING_STATUSES = (BOOKING_PLANNING, BOOKING_FIXED)
+DEFAULT_WORK_MINUTES_PER_DAY = 10 * 60
 
 GOOGLE_SYNC_ACTION_UPSERT = "upsert"
 GOOGLE_SYNC_ACTION_DELETE = "delete"
@@ -48,6 +49,8 @@ class Event(db.Model):
     google_sync_error = db.Column(db.Text, nullable=True)
     sync_to_google_calendar = db.Column(db.Boolean, nullable=False, default=True)
     consumables_deducted_at = db.Column(db.DateTime, nullable=True)
+    actual_work_minutes = db.Column(db.Integer, nullable=False, default=0)
+    actual_work_minutes_is_custom = db.Column(db.Boolean, nullable=False, default=False, index=True)
 
     material_assignments = db.relationship(
         "EventMaterial",
@@ -60,6 +63,12 @@ class Event(db.Model):
         back_populates="event",
         cascade="all, delete-orphan",
         order_by="EventPersonnel.id",
+    )
+    work_day_entries = db.relationship(
+        "EventWorkDay",
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="EventWorkDay.work_on",
     )
 
     __table_args__ = (
@@ -93,6 +102,67 @@ class Event(db.Model):
     @property
     def status_label(self):
         return self.status.title()
+
+    @property
+    def scheduled_days(self):
+        return max((self.ends_on - self.starts_on).days + 1, 1)
+
+    @property
+    def scheduled_work_dates(self):
+        current_day = self.starts_on
+        days = []
+        while current_day <= self.ends_on:
+            days.append(current_day)
+            current_day += timedelta(days=1)
+        return days or [self.starts_on]
+
+    @property
+    def actual_work_default_minutes(self):
+        return self.scheduled_days * DEFAULT_WORK_MINUTES_PER_DAY
+
+    @property
+    def tracked_work_minutes(self):
+        if self.work_day_entries:
+            return sum(self.work_minutes_for_date(work_on) for work_on in self.scheduled_work_dates)
+        if self.actual_work_minutes_is_custom:
+            return self.actual_work_minutes
+        return self.actual_work_default_minutes
+
+    @staticmethod
+    def _hours_value(minutes):
+        if minutes % 60 == 0:
+            return str(minutes // 60)
+        return f"{minutes / 60:.2f}".rstrip("0").rstrip(".")
+
+    @property
+    def actual_work_hours_value(self):
+        return self._hours_value(self.tracked_work_minutes)
+
+    @property
+    def actual_work_hours_label(self):
+        return f"{self.actual_work_hours_value.replace('.', ',')} h"
+
+    @property
+    def actual_work_default_hours_label(self):
+        return f"{self._hours_value(self.actual_work_default_minutes).replace('.', ',')} h"
+
+    def work_day_entry_for_date(self, work_on):
+        return next((entry for entry in self.work_day_entries if entry.work_on == work_on), None)
+
+    def work_minutes_for_date(self, work_on):
+        entry = self.work_day_entry_for_date(work_on)
+        if entry:
+            return entry.actual_work_minutes
+        return DEFAULT_WORK_MINUTES_PER_DAY
+
+    def work_hours_value_for_date(self, work_on):
+        return self._hours_value(self.work_minutes_for_date(work_on))
+
+    def work_hours_label_for_date(self, work_on):
+        return f"{self.work_hours_value_for_date(work_on).replace('.', ',')} h"
+
+    def work_day_is_custom(self, work_on):
+        return self.work_day_entry_for_date(work_on) is not None
 
     def overlaps(self, other):
         return self.starts_at < other.ends_at and other.starts_at < self.ends_at
@@ -245,6 +315,20 @@ class EventMaterial(db.Model):
     __table_args__ = (
         UniqueConstraint("event_id", "material_id", name="unique_material_per_event"),
         CheckConstraint("quantity > 0", name="event_material_quantity_positive"),
+    )
+
+
+class EventWorkDay(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.Integer, db.ForeignKey("event.id"), nullable=False, index=True)
+    work_on = db.Column(db.Date, nullable=False, index=True)
+    actual_work_minutes = db.Column(db.Integer, nullable=False)
+
+    event = db.relationship("Event", back_populates="work_day_entries")
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "work_on", name="unique_work_day_per_event"),
+        CheckConstraint("actual_work_minutes >= 0", name="event_work_day_minutes_non_negative"),
     )
 
 
