@@ -657,6 +657,31 @@ def test_inventory_warns_when_planned_material_exceeds_stock(app):
     assert "1 pcs fehlen" in html
 
 
+def test_inventory_does_not_warn_for_non_overlapping_fixed_material_plans(app):
+    first_day = datetime.now().date() + timedelta(days=30)
+    second_day = first_day + timedelta(days=1)
+
+    with app.app_context():
+        material = Material(name="Reusable truss", kind=MATERIAL_FIXED, total_quantity=10, unit="pcs")
+        first = make_event("First demand", first_day, first_day)
+        second = make_event("Second demand", second_day, second_day)
+        db.session.add_all([material, first, second])
+        db.session.flush()
+        db.session.add_all(
+            [
+                EventMaterial(event=first, material=material, quantity=10),
+                EventMaterial(event=second, material=material, quantity=10),
+            ]
+        )
+        db.session.commit()
+
+    html = app.test_client().get("/inventory").data.decode()
+
+    assert "Reusable truss" in html
+    assert "material-shortage" not in html
+    assert "fehlen" not in html
+
+
 def test_inventory_management_is_on_separate_page(app):
     client = app.test_client()
     dashboard_html = client.get("/").data.decode()

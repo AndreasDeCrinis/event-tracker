@@ -365,6 +365,31 @@ def material_planned_quantity(material, moment=None):
     )
 
 
+def material_peak_planned_quantity(material, moment=None):
+    if material.kind != MATERIAL_FIXED:
+        return material_planned_quantity(material, moment=moment)
+
+    moment = moment or datetime.now()
+    changes = {}
+
+    for assignment in material.assignments:
+        event = assignment.event
+        if event.status != STATUS_PLANNED or event.ends_at <= moment:
+            continue
+
+        starts_at = max(event.starts_at, moment)
+        changes[starts_at] = changes.get(starts_at, 0) + assignment.quantity
+        changes[event.ends_at] = changes.get(event.ends_at, 0) - assignment.quantity
+
+    peak = 0
+    current = 0
+    for timestamp in sorted(changes):
+        current += changes[timestamp]
+        peak = max(peak, current)
+
+    return peak
+
+
 def material_available_quantity(material, target_event=None, moment=None, exclude_event_id=None):
     allocated = material_allocated_quantity(
         material,

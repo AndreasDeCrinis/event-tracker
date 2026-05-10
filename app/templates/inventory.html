@@ -25,7 +25,7 @@
           <div class="warning-panel inventory-warning">
             <strong>Geplante Menge übersteigt den Bestand.</strong>
             <span>
-              {{ row.planned }} {{ material.unit }} geplant,
+              {{ row.peak_planned }} {{ material.unit }} {% if row.peak_planned == row.planned %}geplant{% else %}gleichzeitig geplant{% endif %},
               {{ material.total_quantity }} {{ material.unit }} im Bestand,
               {{ row.planned_shortage }} {{ material.unit }} fehlen.
             </span>
